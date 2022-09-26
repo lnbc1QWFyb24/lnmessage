@@ -1,0 +1,32 @@
+{
+  "name": "commando",
+  "version": "0.0.1",
+  "description": "Make RPC requests to your Core Lightning node in the browser",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "author": "Aaron Barnard",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/crypto-js": "^4.1.1",
+    "@types/secp256k1": "^4.0.3",
+    "@typescript-eslint/eslint-plugin": "^5.27.0",
+    "@typescript-eslint/parser": "^5.27.0",
+    "eslint": "^8.16.0",
+    "eslint-config-prettier": "^8.3.0",
+    "prettier": "^2.6.2",
+    "typescript": "^4.8.2"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "crypto-js": "^4.1.1",
+    "rxjs": "^7.5.7",
+    "secp256k1": "^4.0.3"
+  }
+}
