@@ -16,9 +16,9 @@ export function hmacHash(key: Buffer, input: Buffer) {
   return Buffer.from(CryptoJS.enc.Hex.stringify(words), 'hex')
 }
 
-export function sha256(input: Buffer): Buffer {
-  const hash = CryptoJS.SHA256('Message')
-  return Buffer.from(CryptoJS.enc.Hex.stringify(hash), 'hex')
+export async function sha256(input: Buffer): Promise<Buffer> {
+  const res = await window.crypto.subtle.digest('SHA-256', input)
+  return Buffer.from(res)
 }
 
 export function hkdf(ikm: Buffer, len: number, salt = Buffer.alloc(0), info = Buffer.alloc(0)) {
@@ -84,6 +84,7 @@ export function ccpDecrypt(k: Buffer, n: Buffer, ad: Buffer, ciphertext: Buffer)
     decipher.setAuthTag(ciphertext)
     return decipher.final && decipher.final()
   }
+
   if (ciphertext.length > 16) {
     const tag = ciphertext.subarray(ciphertext.length - 16)
     const pad = ciphertext.subarray(0, ciphertext.length - 16)
@@ -93,4 +94,14 @@ export function ccpDecrypt(k: Buffer, n: Buffer, ad: Buffer, ciphertext: Buffer)
     m = Buffer.concat([m as Buffer, f as Buffer])
     return m
   }
+}
+
+export function createRandomPrivateKey(): string {
+  let privKey
+  do {
+    const bytes = Buffer.allocUnsafe(32)
+    privKey = window.crypto.getRandomValues(bytes)
+  } while (!secp256k1.privateKeyVerify(privKey))
+
+  return privKey.toString('hex')
 }
