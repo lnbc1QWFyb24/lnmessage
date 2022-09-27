@@ -1,5 +1,5 @@
 import { ccpDecrypt, ccpEncrypt, ecdh, getPublicKey, hkdf, sha256 } from './crypto'
-import type { NoiseStateOptions } from './noise-state-options'
+import type { NoiseStateOptions } from './types'
 import { Buffer } from 'buffer'
 
 export class NoiseState {

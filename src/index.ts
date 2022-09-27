@@ -2,55 +2,22 @@ import { BehaviorSubject, Subject } from 'rxjs'
 import { filter, take } from 'rxjs/operators'
 import { createRandomPrivateKey } from './crypto'
 import { NoiseState } from './noise-state'
-import { HANDSHAKE_STATE, MessageTypes } from './types'
-// @TODO needs to use appropriate socket for when used in node.js vs the browser?
-// or just make it browser based
-
-// make it a class, this way it can easily be extended to have more functionality rather than only speaking to the node to make rpc calls
-
-// connect to a lightning node from a browser
-type LnWebSocketOptions = {
-  /**
-   * 33-byte hex remote compressed public key.
-   * The identity of the node you would like to initiate a connection with
-   */
-  remoteNodePublicKey: string
-  /**
-   * The IP address of the remote node
-   */
-  ip: string
-  /**
-   * The port of the remote node. Defaults to 9735
-   */
-  port: string
-  /**
-   * A WebSocket proxy endpoint for the browser to connect to,
-   * so that a server can create a direct connection to the node without the need for a tls certificate runnning on the remote node.
-   * Checkout https://github.com/clams-tech/lnsocket-proxy and https://github.com/jb55/ln-ws-proxy
-   */
-  wsProxy?: string
-  /**
-   * 32 byte hex encoded private key to be used as the local node secret.
-   * Use this to ensure a consistent local node identity across connection sessions
-   */
-  privateKey?: string
-}
+import { LnWebSocketOptions, HANDSHAKE_STATE, MessageTypes } from './types'
+import { validateInit } from './validation'
 
 class LnWebSocket {
   public noise: NoiseState
   public wsUrl: string
   public socket: WebSocket
   public connected$: BehaviorSubject<boolean>
-  public decryptedMessages$: Subject<Buffer>()
+  public decryptedMessages$: Subject<Buffer>
   private handshakeState: HANDSHAKE_STATE
 
   constructor(options: LnWebSocketOptions) {
-    // @TODO - validate options
+    validateInit(options)
 
     const { remoteNodePublicKey, wsProxy, privateKey, ip, port } = options
-
     const rpk = Buffer.from(remoteNodePublicKey, 'hex')
-
     const ls = Buffer.from(privateKey || createRandomPrivateKey(), 'hex')
     const es = Buffer.from(createRandomPrivateKey(), 'hex')
 
@@ -87,14 +54,14 @@ class LnWebSocket {
 
     switch (this.handshakeState) {
       case HANDSHAKE_STATE.INITIATOR_INITIATING:
-        throw new Error('Commando received data before intiialized')
+        throw new Error('Received data before intialised')
 
       case HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY: {
         if (message.length !== 50) {
           console.error('Invalid message received from remote node')
           return
         }
-        console.log('initiatorAct2')
+
         // process reply
         await this.noise.initiatorAct2(message)
 
@@ -108,7 +75,7 @@ class LnWebSocket {
         this.handshakeState = HANDSHAKE_STATE.READY
         break
       }
-      
+
       case HANDSHAKE_STATE.READY: {
         const LEN_CIPHER_BYTES = 2
         const LEN_MAC_BYTES = 16
@@ -139,7 +106,6 @@ class LnWebSocket {
           }
 
           case MessageTypes.PING: {
-            console.log('RECEIVED A PING!')
             const numPongBytes = payload.readUInt16BE()
             const pong = await this.noise.encryptMessage(
               Buffer.concat([
@@ -149,13 +115,7 @@ class LnWebSocket {
               ])
             )
 
-            console.log('sending a pong')
             this.socket.send(pong)
-            break
-          }
-
-          case MessageTypes.PONG: {
-            console.log('RECEIVED A PONG!')
             break
           }
 

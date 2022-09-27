@@ -101,7 +101,17 @@ export function createRandomPrivateKey(): string {
   do {
     const bytes = Buffer.allocUnsafe(32)
     privKey = window.crypto.getRandomValues(bytes)
-  } while (!secp256k1.privateKeyVerify(privKey))
+  } while (!validPrivateKey(privKey))
 
   return privKey.toString('hex')
+}
+
+export function validPublicKey(publicKey: string): boolean {
+  return secp256k1.publicKeyVerify(Buffer.from(publicKey, 'hex'))
+}
+
+export function validPrivateKey(privateKey: string | Buffer): boolean {
+  return secp256k1.privateKeyVerify(
+    typeof privateKey === 'string' ? Buffer.from(privateKey, 'hex') : privateKey
+  )
 }

@@ -1,3 +1,31 @@
+export type LnWebSocketOptions = {
+  /**
+   * 33-byte hex remote compressed public key.
+   * The identity of the node you would like to initiate a connection with
+   */
+  remoteNodePublicKey: string
+  /**
+   * The IP address of the remote node
+   */
+  ip: string
+  /**
+   * The port of the remote node. Defaults to 9735
+   */
+  port: number
+  /**
+   * A WebSocket proxy endpoint for the browser to connect to,
+   * so that a server can create a direct connection to the node without the need for a tls certificate runnning on the remote node
+   * or if the Lightning node implementation does not support WebSocket connections directly
+   * Checkout https://github.com/clams-tech/lnsocket-proxy and https://github.com/jb55/ln-ws-proxy
+   */
+  wsProxy?: string
+  /**
+   * 32 byte hex encoded private key to be used as the local node secret.
+   * Use this to ensure a consistent local node identity across connection sessions
+   */
+  privateKey?: string
+}
+
 export type NoiseStateOptions = {
   /**
    * Local private key as a 32-byte buffer
