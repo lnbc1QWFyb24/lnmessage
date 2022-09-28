@@ -1,5 +1,5 @@
-import { BehaviorSubject, Subject } from 'rxjs'
-import { filter, take } from 'rxjs/operators'
+import { BehaviorSubject, Observable, Subject } from 'rxjs'
+import { catchError, filter, map, take } from 'rxjs/operators'
 import { createRandomPrivateKey } from './crypto'
 import { NoiseState } from './noise-state'
 import { LnWebSocketOptions, HANDSHAKE_STATE, MessageTypes } from './types'
@@ -7,17 +7,21 @@ import { validateInit } from './validation'
 
 class LnWebSocket {
   public noise: NoiseState
+  public remoteNodePublicKey: string
   public wsUrl: string
   public socket: WebSocket
   public connected$: BehaviorSubject<boolean>
-  public decryptedMessages$: Subject<Buffer>
-  private handshakeState: HANDSHAKE_STATE
+  public decryptedMsgs$: Observable<{ type: string; payload: Buffer; extension: Buffer }>
+  public commandoMsgs$: Observable<{ id: string; result: unknown }>
+
+  private _handshakeState: HANDSHAKE_STATE
+  private _decryptedMsgs$: Subject<{ type: string; payload: Buffer; extension: Buffer }>
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
 
     const { remoteNodePublicKey, wsProxy, privateKey, ip, port } = options
-    const rpk = Buffer.from(remoteNodePublicKey, 'hex')
+
     const ls = Buffer.from(privateKey || createRandomPrivateKey(), 'hex')
     const es = Buffer.from(createRandomPrivateKey(), 'hex')
 
@@ -26,25 +30,43 @@ class LnWebSocket {
       es
     })
 
+    this.remoteNodePublicKey = remoteNodePublicKey
     this.wsUrl = wsProxy ? `${wsProxy}/${ip}:${port}` : `wss://${remoteNodePublicKey}@${ip}:${port}`
-    this.socket = new WebSocket(this.wsUrl)
     this.connected$ = new BehaviorSubject<boolean>(false)
-    this.handshakeState = HANDSHAKE_STATE.INITIATOR_INITIATING
-    this.decryptedMessages$ = new Subject<Buffer>()
 
-    this.socket.onopen = async () => {
-      const msg = await this.noise.initiatorAct1(rpk)
-      this.socket.send(msg)
-      this.handshakeState = HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY
+    this._handshakeState = HANDSHAKE_STATE.INITIATOR_INITIATING
+    this._decryptedMsgs$ = new Subject()
+
+    this.decryptedMsgs$ = this._decryptedMsgs$.asObservable()
+
+    this.commandoMsgs$ = this.decryptedMsgs$.pipe(
+      filter(({ type }) => type === MessageTypes.COMMANDO_RESPONSE),
+      map(({ payload }) => JSON.parse(payload.subarray(8).toString()))
+    )
+  }
+
+  async connect() {
+    const socket = new WebSocket(this.wsUrl)
+
+    socket.onopen = async () => {
+      const msg = await this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
+      socket.send(msg)
+      this._handshakeState = HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY
     }
 
-    this.socket.onclose = () => {
+    socket.onclose = () => {
       this.connected$.next(false)
       console.log('socket closed')
     }
 
-    this.socket.onerror = (err) => console.log('Socket error:', err)
-    this.socket.onmessage = this.handleMessage
+    socket.onerror = (err) => console.log('Socket error:', err)
+    socket.onmessage = this.handleMessage
+
+    this.socket = socket
+  }
+
+  disconnect() {
+    this.socket && this.socket.close()
   }
 
   async handleMessage(ev: MessageEvent) {
@@ -52,7 +74,7 @@ class LnWebSocket {
     const arrayBuffer = await data.arrayBuffer()
     const message = Buffer.from(arrayBuffer)
 
-    switch (this.handshakeState) {
+    switch (this._handshakeState) {
       case HANDSHAKE_STATE.INITIATOR_INITIATING:
         throw new Error('Received data before intialised')
 
@@ -72,7 +94,7 @@ class LnWebSocket {
         this.socket.send(reply)
 
         // transition
-        this.handshakeState = HANDSHAKE_STATE.READY
+        this._handshakeState = HANDSHAKE_STATE.READY
         break
       }
 
@@ -119,12 +141,9 @@ class LnWebSocket {
             break
           }
 
-          case MessageTypes.COMMANDO_RESPONSE: {
-            console.log({ result: JSON.parse(payload.subarray(8).toString()) })
-          }
+          default:
+            this._decryptedMsgs$.next({ type, payload, extension })
         }
-
-        this.decryptedMessages$.next(decrypted)
       }
     }
   }
@@ -145,17 +164,24 @@ class LnWebSocket {
           take(1)
         )
         .subscribe(async () => {
+          console.log({ yep: this })
           const msg = await this.noise.encryptMessage(
             Buffer.concat([
               Buffer.from('4c4f', 'hex'),
               Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]),
-              Buffer.from(JSON.stringify({ rune, method, params, id: window.crypto.randomUUID() }))
+              Buffer.from(
+                JSON.stringify({
+                  rune,
+                  method,
+                  params,
+                  id: window.crypto.randomUUID(),
+                  jsonrpc: '2.0'
+                })
+              )
             ])
           )
 
           this.socket.send(msg)
-
-          // @TODO - listen for result and resolve or reject
         })
     })
   }
