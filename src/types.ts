@@ -38,11 +38,40 @@ export type NoiseStateOptions = {
   es: Buffer
 }
 
-export enum MessageTypes {
-  INIT = '0010',
-  PING = '0012',
-  PONG = '0013',
-  COMMANDO_RESPONSE = '594d'
+/**
+ * Defined in BOLT01
+ */
+export enum MessageType {
+  // Setup and Control (0 - 31)
+  Init = 16,
+  Error = 17,
+  Ping = 18,
+  Pong = 19,
+
+  // Channel (32-127)
+  OpenChannel = 32,
+  AcceptChannel = 33,
+  FundingCreated = 34,
+  FundingSigned = 35,
+  FundingLocked = 36,
+  Shutdown = 38,
+  ClosingSigned = 39,
+
+  // Commitment (128-255)
+  //
+
+  // Routing (256-511)
+  ChannelAnnouncement = 256,
+  NodeAnnouncement = 257,
+  ChannelUpdate = 258,
+  AnnouncementSignatures = 259,
+  QueryShortChannelIds = 261,
+  ReplyShortChannelIdsEnd = 262,
+  QueryChannelRange = 263,
+  ReplyChannelRange = 264,
+  GossipTimestampFilter = 265,
+
+  Commando = 22861
 }
 
 /**
@@ -94,4 +123,20 @@ export enum HANDSHAKE_STATE {
    * start sending and receiving over the socket.
    */
   READY = 100
+}
+
+export type JsonRpcRequest = {
+  method: string
+  params?: unknown | unknown[]
+}
+
+type JsonRpcBaseResponse = {
+  jsonrpc: string
+  id: string | number | null
+}
+
+export type JsonRpcSuccessResponse = JsonRpcBaseResponse & { result: unknown }
+
+export type JsonRpcErrorResponse = JsonRpcBaseResponse & {
+  error: { code: number; message: string; data: unknown }
 }

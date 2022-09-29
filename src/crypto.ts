@@ -82,7 +82,7 @@ export function ccpDecrypt(k: Buffer, n: Buffer, ad: Buffer, ciphertext: Buffer)
 
   if (ciphertext.length === 16) {
     decipher.setAuthTag(ciphertext)
-    return decipher.final && decipher.final()
+    return decipher.final()
   }
 
   if (ciphertext.length > 16) {
@@ -90,7 +90,7 @@ export function ccpDecrypt(k: Buffer, n: Buffer, ad: Buffer, ciphertext: Buffer)
     const pad = ciphertext.subarray(0, ciphertext.length - 16)
     decipher.setAuthTag(tag)
     let m = decipher.update(pad)
-    const f = decipher.final && decipher.final()
+    const f = decipher.final()
     m = Buffer.concat([m as Buffer, f as Buffer])
     return m
   }
