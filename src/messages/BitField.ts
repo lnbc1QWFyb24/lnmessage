@@ -1,4 +1,5 @@
 import * as bigintutil from './BigIntUtils'
+import { Buffer } from 'buffer'
 
 type BigIntInput = string | number | bigint | boolean
 

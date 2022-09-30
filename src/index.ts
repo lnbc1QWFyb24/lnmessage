@@ -8,26 +8,32 @@ import { validateInit } from './validation'
 import {
   LnWebSocketOptions,
   HANDSHAKE_STATE,
-  MessageTypes,
+  MessageType,
   JsonRpcRequest,
   JsonRpcSuccessResponse,
   JsonRpcErrorResponse
 } from './types'
+import { deserialize } from './messages/MessageFactory'
+import { IWireMessage } from './messages/IWireMessage'
+import { BufferWriter } from './messages/buf'
+import { CommandoMessage } from './messages/CommandoMessage'
 
 class LnConnect {
   public noise: NoiseState
   public remoteNodePublicKey: string
   public publicKey: string
+  public privateKey: string
   public wsUrl: string
   public socket: WebSocket
   public connected$: BehaviorSubject<boolean>
-  public decryptedMsgs$: Observable<{ type: string; payload: Buffer; extension: Buffer }>
+  public decryptedMsgs$: Observable<Buffer>
   public commandoMsgs$: Observable<JsonRpcSuccessResponse | JsonRpcErrorResponse>
 
   private _handshakeState: HANDSHAKE_STATE
-  private _decryptedMsgs$: Subject<{ type: string; payload: Buffer; extension: Buffer }>
-  private _commandoResponseListeners: Subject<JsonRpcSuccessResponse | JsonRpcErrorResponse>[]
+  private _decryptedMsgs$: Subject<Buffer>
+  private _commandoMsgs$: Subject<CommandoMessage>
   private _multiPartMsg: { len: number; data: Buffer } | null
+  private _partialCommandoMsg: Buffer | null
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
@@ -44,27 +50,18 @@ class LnConnect {
 
     this.remoteNodePublicKey = remoteNodePublicKey
     this.publicKey = this.noise.lpk.toString('hex')
+    this.privateKey = ls.toString('hex')
     this.wsUrl = wsProxy ? `${wsProxy}/${ip}:${port}` : `wss://${remoteNodePublicKey}@${ip}:${port}`
     this.connected$ = new BehaviorSubject<boolean>(false)
 
     this._handshakeState = HANDSHAKE_STATE.INITIATOR_INITIATING
     this._decryptedMsgs$ = new Subject()
-
     this.decryptedMsgs$ = this._decryptedMsgs$.asObservable()
-
-    this.commandoMsgs$ = this.decryptedMsgs$.pipe(
-      filter(({ type }) => type === MessageTypes.COMMANDO_RESPONSE),
-      map(({ payload }) => JSON.parse(payload.subarray(8).toString()))
-    )
+    this._commandoMsgs$ = new Subject()
+    this.commandoMsgs$ = this._commandoMsgs$.asObservable().pipe(map(({ response }) => response))
 
     this._multiPartMsg = null
-
-    this._commandoResponseListeners = []
-
-    this.commandoMsgs$.subscribe((msg) => {
-      const listener$ = this._commandoResponseListeners.shift()
-      listener$ && listener$.next(msg)
-    })
+    this._partialCommandoMsg = null
   }
 
   async connect(): Promise<boolean> {
@@ -73,7 +70,7 @@ class LnConnect {
 
     socket.onopen = async () => {
       const msg = await this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
-      socket.send(msg.buffer)
+      socket.send(msg)
       this._handshakeState = HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY
     }
 
@@ -116,7 +113,7 @@ class LnConnect {
           const reply = await this.noise.initiatorAct3()
 
           // send final handshake
-          this.socket.send(reply.buffer)
+          this.socket.send(reply)
 
           // transition
           this._handshakeState = HANDSHAKE_STATE.READY
@@ -165,46 +162,45 @@ class LnConnect {
             }
           }
 
-          console.log('decrypting message')
-          const decrypted = await this.noise.decryptMessage(message.subarray(18, 18 + len + 16))
+          let decrypted = await this.noise.decryptMessage(message.subarray(18, 18 + len + 16))
+          const type = decrypted.readUInt16BE()
 
-          const type = decrypted.subarray(0, 2).toString('hex')
-          const payload = decrypted.subarray(2, len)
-          const extension = decrypted.subarray(2 + len)
+          if (type === MessageType.CommandoResponseContinues) {
+            this._partialCommandoMsg = decrypted
+            return
+          }
 
-          switch (type) {
-            case MessageTypes.INIT: {
-              const globalFeatureslength = payload.readUInt16BE()
-              const localFeaturesLength = payload.readUint16BE(2 + globalFeatureslength)
-              const tlvs = payload.subarray(2 + globalFeatureslength + localFeaturesLength)
-              const chainHash = tlvs.subarray(4, 4 + 32).toString('hex')
+          if (type === MessageType.CommandoResponse && this._partialCommandoMsg) {
+            // join commando msg chunks
+            decrypted = Buffer.concat([this._partialCommandoMsg, decrypted])
+            this._partialCommandoMsg = null
+          }
 
-              const reply = await this.noise.encryptMessage(
-                Buffer.from(`00100000000580082a6aa20120${chainHash}`, 'hex')
-              )
+          // deserialise
+          const payload = deserialize(decrypted, len)
 
-              this.socket.send(reply.buffer)
-              console.log('ready to send commando messages')
+          switch (payload.type) {
+            case MessageType.Init: {
+              const reply = await this.noise.encryptMessage((payload as IWireMessage).serialize())
+
+              this.socket.send(reply)
               this.connected$.next(true)
               break
             }
 
-            case MessageTypes.PING: {
-              const numPongBytes = payload.readUInt16BE()
-              const pong = await this.noise.encryptMessage(
-                Buffer.concat([
-                  Buffer.from(MessageTypes.PONG, 'hex'),
-                  Buffer.from(numPongBytes.toString(16), 'hex'),
-                  Buffer.from(new Array(numPongBytes).fill(0))
-                ])
-              )
+            case MessageType.Ping: {
+              const pong = await this.noise.encryptMessage((payload as IWireMessage).serialize())
 
-              this.socket.send(pong.buffer)
+              this.socket.send(pong)
               break
             }
 
+            case MessageType.CommandoResponse: {
+              this._commandoMsgs$.next(payload as CommandoMessage)
+            }
+
             default:
-              this._decryptedMsgs$.next({ type, payload, extension })
+              this._decryptedMsgs$.next(decrypted)
           }
         }
       }
@@ -218,36 +214,44 @@ class LnConnect {
     params = [],
     rune
   }: JsonRpcRequest & { rune: string }): Promise<JsonRpcSuccessResponse['result']> {
-    const listener$ = new Subject<JsonRpcSuccessResponse | JsonRpcErrorResponse>()
-
     if (!this.socket) {
+      // no connection, so initiate and wait for connection
       await this.connect()
     } else {
+      // ensure that we are connected before making any requests
       await firstValueFrom(this.connected$.pipe(filter((connected) => connected === true)))
     }
 
-    console.log('requesting:', { method, params })
+    const writer = new BufferWriter()
 
-    const msg = await this.noise.encryptMessage(
-      Buffer.concat([
-        Buffer.from('4c4f', 'hex'),
-        Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]),
-        Buffer.from(
-          JSON.stringify({
-            rune,
-            method,
-            params,
-            id: window.crypto.randomUUID(),
-            jsonrpc: '2.0'
-          })
-        )
-      ])
+    // create random id to match request with response
+    const idBytes = Buffer.allocUnsafe(8)
+    const id = window.crypto.getRandomValues(idBytes)
+    const idHex = id.toString('hex')
+
+    // write the type
+    writer.writeUInt16BE(MessageType.CommandoRequest)
+
+    // write the id
+    writer.writeBytes(id)
+
+    // write the request
+    writer.writeBytes(
+      Buffer.from(
+        JSON.stringify({
+          rune,
+          method,
+          params
+        })
+      )
     )
 
-    this.socket.send(msg.buffer)
-    this._commandoResponseListeners.push(listener$)
+    const message = await this.noise.encryptMessage(writer.toBuffer())
+    this.socket.send(message)
 
-    const response = await firstValueFrom(listener$)
+    const { response } = await firstValueFrom(
+      this._commandoMsgs$.pipe(filter((commandoMsg) => commandoMsg.id === idHex))
+    )
 
     const { result } = response as JsonRpcSuccessResponse
     const { error } = response as JsonRpcErrorResponse

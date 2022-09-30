@@ -99,7 +99,6 @@ class Cipher {
 
     if (this._decrypt) {
       if (xorTest(tag, this.tag as Buffer)) {
-        console.log('xortest')
         throw new Error('Unsupported state or unable to authenticate data')
       }
     } else {

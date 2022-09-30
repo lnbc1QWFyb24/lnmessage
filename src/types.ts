@@ -71,7 +71,9 @@ export enum MessageType {
   ReplyChannelRange = 264,
   GossipTimestampFilter = 265,
 
-  Commando = 22861
+  CommandoRequest = 19535,
+  CommandoResponseContinues = 22859,
+  CommandoResponse = 22861
 }
 
 /**
@@ -138,5 +140,7 @@ type JsonRpcBaseResponse = {
 export type JsonRpcSuccessResponse = JsonRpcBaseResponse & { result: unknown }
 
 export type JsonRpcErrorResponse = JsonRpcBaseResponse & {
-  error: { code: number; message: string; data: unknown }
+  error: { code: number; message: string; data?: unknown }
 }
+
+export type CommandoResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse

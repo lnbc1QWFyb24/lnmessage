@@ -1,5 +1,5 @@
-import { BufferReader } from './buffer-reader'
-import { BufferWriter } from './buffer-writer'
+import { Buffer } from 'buffer'
+import { BufferReader, BufferWriter } from './buf'
 import { BitField } from './BitField'
 import { InitFeatureFlags } from './InitFeatureFlags'
 import { MessageType } from '../types'

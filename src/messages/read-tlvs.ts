@@ -1,4 +1,4 @@
-import { BufferReader } from './buffer-reader'
+import { BufferReader } from './buf'
 
 /**
  * Reads TLVs from a reader until the entire stream is processed. The handler is
@@ -10,29 +10,33 @@ export function readTlvs(
   reader: BufferReader,
   handler: (type: bigint, value: BufferReader) => boolean
 ) {
-  let lastType: bigint | null = null
+  let lastType: bigint = BigInt(-1)
 
   while (!reader.eof) {
-    const type = reader.readBigSize()
-    const len = reader.readBigSize()
-    const value = reader.readBytes(Number(len))
-    const valueReader = new BufferReader(value)
+    try {
+      const type = reader.readBigSize()
+      const len = reader.readBigSize()
+      const value = reader.readBytes(Number(len))
+      const valueReader = new BufferReader(value)
 
-    if (lastType && type <= lastType) {
-      throw new Error('Invalid TLV stream')
+      if (type <= lastType) {
+        throw new Error('Invalid TLV stream')
+      }
+
+      const isEven = type % BigInt(2) === BigInt(0)
+      const wasHandled = handler(type, valueReader)
+
+      if (!wasHandled && isEven) {
+        throw new Error('Unknown even type')
+      }
+
+      if (wasHandled && !valueReader.eof) {
+        throw new Error('Non-canonical length')
+      }
+
+      lastType = type
+    } catch (error) {
+      console.log({ error })
     }
-
-    const isEven = type % BigInt(2) === BigInt(0)
-    const wasHandled = handler(type, valueReader)
-
-    if (!wasHandled && isEven) {
-      throw new Error('Unknown even type')
-    }
-
-    if (wasHandled && !valueReader.eof) {
-      throw new Error('Non-canonical length')
-    }
-
-    lastType = type
   }
 }
