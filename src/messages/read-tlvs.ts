@@ -36,7 +36,7 @@ export function readTlvs(
 
       lastType = type
     } catch (error) {
-      console.log({ error })
+      // tried to read an index out of range
     }
   }
 }
