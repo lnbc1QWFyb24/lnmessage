@@ -1,7 +1,7 @@
 {
-  "name": "lnconnect",
+  "name": "lnmessage",
   "version": "0.0.1",
-  "description": "Connect to a lightning node from the browser",
+  "description": "Talk to Lightning nodes from your browser",
   "main": "dist/index.js",
   "type": "module",
   "types": "dist/index.d.ts",
