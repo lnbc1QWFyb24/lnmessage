@@ -1,5 +1,5 @@
 import { BehaviorSubject, firstValueFrom, Observable, Subject } from 'rxjs'
-import { filter, map, tap } from 'rxjs/operators'
+import { filter, map, skip } from 'rxjs/operators'
 import { Buffer } from 'buffer'
 import { createRandomPrivateKey } from './crypto'
 import { NoiseState } from './noise-state'
@@ -18,6 +18,8 @@ import { IWireMessage } from './messages/IWireMessage'
 import { BufferWriter } from './messages/buf'
 import { CommandoMessage } from './messages/CommandoMessage'
 
+const DEFAULT_RECONNECT_ATTEMPTS = 5
+
 class LnConnect {
   public noise: NoiseState
   public remoteNodePublicKey: string
@@ -34,6 +36,7 @@ class LnConnect {
   private _commandoMsgs$: Subject<CommandoMessage>
   private _multiPartMsg: { len: number; data: Buffer } | null
   private _partialCommandoMsg: Buffer | null
+  private _attemptedReconnects: number
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
@@ -62,32 +65,38 @@ class LnConnect {
 
     this._multiPartMsg = null
     this._partialCommandoMsg = null
+    this._attemptedReconnects = 0
   }
 
   async connect(): Promise<boolean> {
-    const socket = new WebSocket(this.wsUrl)
-    socket.binaryType = 'arraybuffer'
+    this._attemptedReconnects += 1
+    this.socket = new WebSocket(this.wsUrl)
+    this.socket.binaryType = 'arraybuffer'
 
-    socket.onopen = async () => {
+    this.socket.onopen = async () => {
       const msg = await this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
-      socket.send(msg)
+      this.socket.send(msg)
       this._handshakeState = HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY
     }
 
-    socket.onclose = () => {
+    this.socket.onclose = async () => {
       this.connected$.next(false)
-      console.log('socket closed')
+
+      if (this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, this._attemptedReconnects * 1000))
+        this.connect()
+      }
     }
 
-    socket.onerror = (err) => console.log('Socket error:', err)
-    socket.onmessage = this.handleMessage.bind(this)
+    this.socket.onerror = (err) => console.log('Socket error:', err)
+    this.socket.onmessage = this.handleMessage.bind(this)
 
-    this.socket = socket
-
-    return firstValueFrom(this.connected$.pipe(filter((x) => !!x)))
+    return firstValueFrom(this.connected$.pipe(skip(1)))
   }
 
   disconnect() {
+    // set so that will not attempt to reconnect
+    this._attemptedReconnects = DEFAULT_RECONNECT_ATTEMPTS
     this.socket && this.socket.close()
   }
 
@@ -185,6 +194,7 @@ class LnConnect {
 
               this.socket.send(reply)
               this.connected$.next(true)
+              this._attemptedReconnects = 0
               break
             }
 
