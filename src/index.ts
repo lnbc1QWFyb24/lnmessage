@@ -20,7 +20,7 @@ import { CommandoMessage } from './messages/CommandoMessage'
 
 const DEFAULT_RECONNECT_ATTEMPTS = 5
 
-class LnConnect {
+class LnMessage {
   public noise: NoiseState
   public remoteNodePublicKey: string
   public publicKey: string
@@ -272,4 +272,4 @@ class LnConnect {
   }
 }
 
-export default LnConnect
+export default LnMessage
