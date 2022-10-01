@@ -41,7 +41,7 @@ class LnConnect {
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
 
-    const { remoteNodePublicKey, wsProxy, privateKey, ip, port } = options
+    const { remoteNodePublicKey, wsProxy, privateKey, ip, port = 9735 } = options
 
     const ls = Buffer.from(privateKey || createRandomPrivateKey(), 'hex')
     const es = Buffer.from(createRandomPrivateKey(), 'hex')

@@ -11,7 +11,7 @@ export type LnWebSocketOptions = {
   /**
    * The port of the remote node. Defaults to 9735
    */
-  port: number
+  port?: number
   /**
    * A WebSocket proxy endpoint for the browser to connect to,
    * so that a server can create a direct connection to the node without the need for a tls certificate runnning on the remote node
