@@ -43,7 +43,6 @@ class LnMessage {
   private _logger: Logger | void
 
   constructor(options: LnWebSocketOptions) {
-    // @TODO validate logger
     validateInit(options)
 
     const { remoteNodePublicKey, wsProxy, privateKey, ip, port = 9735, logger } = options
