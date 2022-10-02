@@ -1,8 +1,8 @@
 import { validPrivateKey, validPublicKey } from './crypto'
-import { LnWebSocketOptions } from './types'
+import { LnWebSocketOptions, Logger } from './types'
 
 export function validateInit(options: LnWebSocketOptions): void {
-  const { remoteNodePublicKey, wsProxy, privateKey, ip, port } = options
+  const { remoteNodePublicKey, wsProxy, privateKey, ip, port, logger } = options
 
   if (!remoteNodePublicKey || !validPublicKey(remoteNodePublicKey)) {
     throw new Error(`${remoteNodePublicKey} is not a valid public key`)
@@ -32,5 +32,23 @@ export function validateInit(options: LnWebSocketOptions): void {
 
   if (privateKey && !validPrivateKey(privateKey)) {
     throw new Error(`${privateKey} is not a valid private key`)
+  }
+
+  if (logger) {
+    if (typeof logger !== 'object') {
+      throw new Error('Logger must be of type object')
+    }
+
+    const validLevels = ['info', 'warn', 'error']
+
+    Object.entries(logger).forEach(([level, handler]) => {
+      if (!validLevels.includes(level)) {
+        throw new Error(`Invalid logger level: ${level}`)
+      }
+
+      if (typeof handler !== 'function') {
+        throw new Error(`Logger for level: ${level} is not a function`)
+      }
+    })
   }
 }

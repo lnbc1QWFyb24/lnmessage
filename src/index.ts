@@ -11,12 +11,15 @@ import {
   MessageType,
   JsonRpcRequest,
   JsonRpcSuccessResponse,
-  JsonRpcErrorResponse
+  JsonRpcErrorResponse,
+  Logger
 } from './types'
 import { deserialize } from './messages/MessageFactory'
 import { IWireMessage } from './messages/IWireMessage'
 import { BufferWriter } from './messages/buf'
 import { CommandoMessage } from './messages/CommandoMessage'
+import { PongMessage } from './messages/PongMessage'
+import { PingMessage } from './messages/PingMessage'
 
 const DEFAULT_RECONNECT_ATTEMPTS = 5
 
@@ -26,7 +29,7 @@ class LnMessage {
   public publicKey: string
   public privateKey: string
   public wsUrl: string
-  public socket: WebSocket
+  public socket: WebSocket | null
   public connected$: BehaviorSubject<boolean>
   public decryptedMsgs$: Observable<Buffer>
   public commandoMsgs$: Observable<JsonRpcSuccessResponse | JsonRpcErrorResponse>
@@ -37,11 +40,12 @@ class LnMessage {
   private _multiPartMsg: { len: number; data: Buffer } | null
   private _partialCommandoMsg: Buffer | null
   private _attemptedReconnects: number
+  private _logger: Logger | void
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
 
-    const { remoteNodePublicKey, wsProxy, privateKey, ip, port = 9735 } = options
+    const { remoteNodePublicKey, wsProxy, privateKey, ip, port = 9735, logger } = options
 
     const ls = Buffer.from(privateKey || createRandomPrivateKey(), 'hex')
     const es = Buffer.from(createRandomPrivateKey(), 'hex')
@@ -66,29 +70,42 @@ class LnMessage {
     this._multiPartMsg = null
     this._partialCommandoMsg = null
     this._attemptedReconnects = 0
+    this._logger = logger
   }
 
   async connect(): Promise<boolean> {
+    this._log('info', `Initiating connection to node ${this.remoteNodePublicKey}`)
     this._attemptedReconnects += 1
     this.socket = new WebSocket(this.wsUrl)
     this.socket.binaryType = 'arraybuffer'
 
     this.socket.onopen = async () => {
+      this._log('info', 'WebSocket is connected')
+      this._log('info', 'Creating Act1 message')
       const msg = await this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
-      this.socket.send(msg)
-      this._handshakeState = HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY
+
+      if (this.socket) {
+        this._log('info', 'Sending Act1 message')
+        this.socket.send(msg)
+        this._handshakeState = HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY
+      }
     }
 
     this.socket.onclose = async () => {
+      this._log('info', 'WebSocket is closed')
       this.connected$.next(false)
 
       if (this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS) {
+        this._log('info', 'Waiting to reconnect')
         await new Promise((resolve) => setTimeout(resolve, this._attemptedReconnects * 1000))
         this.connect()
       }
     }
 
-    this.socket.onerror = (err) => console.log('Socket error:', err)
+    this.socket.onerror = (err) => {
+      this._log('error', `WebSocket error: ${JSON.stringify(err)}`)
+    }
+
     this.socket.onmessage = this.handleMessage.bind(this)
 
     return firstValueFrom(this.connected$.pipe(skip(1)))
@@ -97,7 +114,9 @@ class LnMessage {
   disconnect() {
     // set so that will not attempt to reconnect
     this._attemptedReconnects = DEFAULT_RECONNECT_ATTEMPTS
+    this._log('info', 'Manually disconnecting from WebSocket')
     this.socket && this.socket.close()
+    this.socket = null
   }
 
   async handleMessage(ev: MessageEvent) {
@@ -105,27 +124,34 @@ class LnMessage {
       const { data } = ev as { data: ArrayBuffer }
       let message = Buffer.from(data)
 
+      this._log('info', `Received a message of length: ${message.length} bytes`)
+
       switch (this._handshakeState) {
         case HANDSHAKE_STATE.INITIATOR_INITIATING:
-          throw new Error('Received data before intialised')
+          this._log('error', 'Received data before intialised')
 
         case HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY: {
           if (data.byteLength !== 50) {
-            console.error('Invalid message received from remote node')
+            this._log('error', 'Invalid message received from remote node')
             return
           }
 
           // process reply
+          this._log('info', 'Validating message as part of Act2')
           await this.noise.initiatorAct2(message)
 
           // create final act of the handshake
+          this._log('info', 'Creating reply for Act3')
           const reply = await this.noise.initiatorAct3()
 
-          // send final handshake
-          this.socket.send(reply)
+          if (this.socket) {
+            this._log('info', 'Sending reply for act3')
+            // send final handshake
+            this.socket.send(reply)
 
-          // transition
-          this._handshakeState = HANDSHAKE_STATE.READY
+            // transition
+            this._handshakeState = HANDSHAKE_STATE.READY
+          }
           break
         }
 
@@ -136,12 +162,15 @@ class LnMessage {
           let len
 
           try {
+            this._log('info', 'Decrypting message length')
             len = await this.noise.decryptLength(
               message.subarray(0, LEN_CIPHER_BYTES + LEN_MAC_BYTES)
             )
+            this._log('info', `Message length: ${len} bytes`)
 
             if (len > data.byteLength) {
               // this means that the message is in multiple parts so cache it
+              this._log('info', 'Message is first part of multi part message, so caching it')
               this._multiPartMsg = {
                 len,
                 data: message
@@ -150,11 +179,14 @@ class LnMessage {
               return
             }
           } catch (error) {
+            this._log('info', 'Received another part of a multipart message')
             // got another part of the multipart message since we cannot decrypt the length
             if (this._multiPartMsg) {
+              this._log('info', 'Joining data parts')
               this._multiPartMsg.data = Buffer.concat([this._multiPartMsg.data, message])
 
               if (this._multiPartMsg.data.length >= this._multiPartMsg.len) {
+                this._log('info', 'Complete message has been assembled')
                 // we have the complete message
                 message = this._multiPartMsg.data
                 len = this._multiPartMsg.len
@@ -164,44 +196,71 @@ class LnMessage {
                 return
               }
             } else {
-              console.warn(
+              this._log(
+                'warn',
                 'Received a part of a message, but no message is cached to concat it to.'
               )
               return
             }
           }
 
+          this._log('info', 'Decrypting message')
           let decrypted = await this.noise.decryptMessage(message.subarray(18, 18 + len + 16))
           const type = decrypted.readUInt16BE()
 
+          const [typeName] = Object.entries(MessageType).find(([name, val]) => val === type) || []
+
+          this._log('info', `Message type is: ${typeName || 'unknown'}`)
+
           if (type === MessageType.CommandoResponseContinues) {
+            this._log(
+              'info',
+              'Received a partial commando message, caching it to join with other parts'
+            )
             this._partialCommandoMsg = decrypted
             return
           }
 
           if (type === MessageType.CommandoResponse && this._partialCommandoMsg) {
+            this._log(
+              'info',
+              'Received a final commando msg and we have a partial message to join it to. Joining now'
+            )
             // join commando msg chunks
             decrypted = Buffer.concat([this._partialCommandoMsg, decrypted])
             this._partialCommandoMsg = null
           }
 
           // deserialise
+          this._log('info', 'Deserialising payload')
           const payload = deserialize(decrypted, len)
 
           switch (payload.type) {
             case MessageType.Init: {
+              this._log('info', 'Constructing Init message reply')
               const reply = await this.noise.encryptMessage((payload as IWireMessage).serialize())
 
-              this.socket.send(reply)
-              this.connected$.next(true)
-              this._attemptedReconnects = 0
+              if (this.socket) {
+                this._log('info', 'Sending Init message reply')
+                this.socket.send(reply)
+                this._log('info', 'Connected and ready to send messages!')
+                this.connected$.next(true)
+                this._attemptedReconnects = 0
+              }
               break
             }
 
             case MessageType.Ping: {
-              const pong = await this.noise.encryptMessage((payload as IWireMessage).serialize())
+              this._log('info', 'Received a Ping message')
+              this._log('info', 'Creating a Pong message')
+              const pongMessage = new PongMessage((payload as PingMessage).numPongBytes).serialize()
+              const pong = await this.noise.encryptMessage(pongMessage)
 
-              this.socket.send(pong)
+              if (this.socket) {
+                this._log('info', 'Sending a Pong message')
+                this.socket.send(pong)
+              }
+
               break
             }
 
@@ -215,7 +274,7 @@ class LnMessage {
         }
       }
     } catch (error) {
-      console.warn('Error handling incoming message:', error)
+      this._log('error', `Error handling incoming message: ${(error as Error).message}`)
     }
   }
 
@@ -224,10 +283,14 @@ class LnMessage {
     params = [],
     rune
   }: JsonRpcRequest & { rune: string }): Promise<JsonRpcSuccessResponse['result']> {
+    this._log('info', `Commando request method: ${method} params: ${JSON.stringify(params)}`)
+
     if (!this.socket) {
+      this._log('info', 'No socket connection, so creating one now')
       // no connection, so initiate and wait for connection
       await this.connect()
     } else {
+      this._log('info', 'Ensuring we have a connection before making request')
       // ensure that we are connected before making any requests
       await firstValueFrom(this.connected$.pipe(filter((connected) => connected === true)))
     }
@@ -256,19 +319,37 @@ class LnMessage {
       )
     )
 
+    this._log('info', 'Creating message to send')
     const message = await this.noise.encryptMessage(writer.toBuffer())
-    this.socket.send(message)
 
-    const { response } = await firstValueFrom(
-      this._commandoMsgs$.pipe(filter((commandoMsg) => commandoMsg.id === idHex))
-    )
+    if (this.socket) {
+      this._log('info', 'Sending commando message')
+      this.socket.send(message)
 
-    const { result } = response as JsonRpcSuccessResponse
-    const { error } = response as JsonRpcErrorResponse
+      this._log('info', 'Message sent and awaiting response')
+      const { response } = await firstValueFrom(
+        this._commandoMsgs$.pipe(filter((commandoMsg) => commandoMsg.id === idHex))
+      )
 
-    if (error) throw error
+      const { result } = response as JsonRpcSuccessResponse
+      const { error } = response as JsonRpcErrorResponse
+      this._log(
+        'info',
+        result ? 'Successful response received' : `Error response received: ${error.message}`
+      )
 
-    return result
+      if (error) throw error
+
+      return result
+    } else {
+      throw new Error('No socket initialised and connected')
+    }
+  }
+
+  _log(level: keyof Logger, msg: string) {
+    if (this._logger && this._logger[level]) {
+      this._logger[level](`[${level.toUpperCase()} - ${new Date().toLocaleTimeString()}]: ${msg}`)
+    }
   }
 }
 

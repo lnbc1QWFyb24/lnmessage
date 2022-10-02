@@ -24,6 +24,11 @@ export type LnWebSocketOptions = {
    * Use this to ensure a consistent local node identity across connection sessions
    */
   privateKey?: string
+  /**
+   * 32 byte hex encoded private key to be used as the local node secret.
+   * Use this to ensure a consistent local node identity across connection sessions
+   */
+  logger?: Logger
 }
 
 export type NoiseStateOptions = {
@@ -144,3 +149,9 @@ export type JsonRpcErrorResponse = JsonRpcBaseResponse & {
 }
 
 export type CommandoResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse
+
+export type Logger = {
+  info: (msg: string) => void
+  warn: (msg: string) => void
+  error: (msg: string) => void
+}
