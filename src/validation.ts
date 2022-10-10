@@ -22,7 +22,7 @@ export function validateInit(options: LnWebSocketOptions): void {
     const errMsg = `${wsProxy} is not a valid url`
     try {
       const url = new URL(wsProxy)
-      if (url.protocol !== 'wss:') {
+      if (url.protocol !== 'wss:' && url.protocol !== 'ws:') {
         throw new Error(errMsg)
       }
     } catch (err) {

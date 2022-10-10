@@ -1,9 +1,15 @@
-import { BehaviorSubject, firstValueFrom, Observable, Subject } from 'rxjs'
-import { filter, map, skip } from 'rxjs/operators'
+import { BehaviorSubject, firstValueFrom, Observable, Subject, timer } from 'rxjs'
+import { filter, map, skip, takeUntil } from 'rxjs/operators'
 import { Buffer } from 'buffer'
 import { createRandomPrivateKey } from './crypto'
 import { NoiseState } from './noise-state'
 import { validateInit } from './validation'
+import { deserialize } from './messages/MessageFactory'
+import { IWireMessage } from './messages/IWireMessage'
+import { BufferWriter } from './messages/buf'
+import { CommandoMessage } from './messages/CommandoMessage'
+import { PongMessage } from './messages/PongMessage'
+import { PingMessage } from './messages/PingMessage'
 
 import {
   LnWebSocketOptions,
@@ -14,12 +20,6 @@ import {
   JsonRpcErrorResponse,
   Logger
 } from './types'
-import { deserialize } from './messages/MessageFactory'
-import { IWireMessage } from './messages/IWireMessage'
-import { BufferWriter } from './messages/buf'
-import { CommandoMessage } from './messages/CommandoMessage'
-import { PongMessage } from './messages/PongMessage'
-import { PingMessage } from './messages/PingMessage'
 
 const DEFAULT_RECONNECT_ATTEMPTS = 5
 
@@ -31,8 +31,10 @@ class LnMessage {
   public wsUrl: string
   public socket: WebSocket | null
   public connected$: BehaviorSubject<boolean>
+  public connecting: boolean
   public decryptedMsgs$: Observable<Buffer>
   public commandoMsgs$: Observable<JsonRpcSuccessResponse | JsonRpcErrorResponse>
+  public Buffer: BufferConstructor
 
   private _handshakeState: HANDSHAKE_STATE
   private _decryptedMsgs$: Subject<Buffer>
@@ -41,6 +43,7 @@ class LnMessage {
   private _partialCommandoMsg: Buffer | null
   private _attemptedReconnects: number
   private _logger: Logger | void
+  private _disconnected: boolean
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
@@ -60,6 +63,8 @@ class LnMessage {
     this.privateKey = ls.toString('hex')
     this.wsUrl = wsProxy ? `${wsProxy}/${ip}:${port}` : `wss://${remoteNodePublicKey}@${ip}:${port}`
     this.connected$ = new BehaviorSubject<boolean>(false)
+    this.connecting = false
+    this.Buffer = Buffer
 
     this._handshakeState = HANDSHAKE_STATE.INITIATOR_INITIATING
     this._decryptedMsgs$ = new Subject()
@@ -74,7 +79,10 @@ class LnMessage {
   }
 
   async connect(): Promise<boolean> {
+    if (this.connected$.getValue()) return true
+
     this._log('info', `Initiating connection to node ${this.remoteNodePublicKey}`)
+    this.connecting = true
     this._attemptedReconnects += 1
     this.socket = new WebSocket(this.wsUrl)
     this.socket.binaryType = 'arraybuffer'
@@ -95,7 +103,7 @@ class LnMessage {
       this._log('info', 'WebSocket is closed')
       this.connected$.next(false)
 
-      if (this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS) {
+      if (this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS && !this._disconnected) {
         this._log('info', 'Waiting to reconnect')
         await new Promise((resolve) => setTimeout(resolve, this._attemptedReconnects * 1000))
         this.connect()
@@ -112,9 +120,8 @@ class LnMessage {
   }
 
   disconnect() {
-    // set so that will not attempt to reconnect
-    this._attemptedReconnects = DEFAULT_RECONNECT_ATTEMPTS
     this._log('info', 'Manually disconnecting from WebSocket')
+    this._disconnected = true
     this.socket && this.socket.close()
     this.socket = null
   }
@@ -244,9 +251,13 @@ class LnMessage {
                 this._log('info', 'Sending Init message reply')
                 this.socket.send(reply)
                 this._log('info', 'Connected and ready to send messages!')
-                this.connected$.next(true)
+                this.connecting = false
+                this._disconnected = false
                 this._attemptedReconnects = 0
+                this.connected$.next(true)
+                this._startPingMessages()
               }
+
               break
             }
 
@@ -285,9 +296,9 @@ class LnMessage {
   }: JsonRpcRequest & { rune: string }): Promise<JsonRpcSuccessResponse['result']> {
     this._log('info', `Commando request method: ${method} params: ${JSON.stringify(params)}`)
 
-    if (!this.socket) {
+    // not connected and not initiating a connection currently
+    if (!this.connected$.getValue() && !this.connecting) {
       this._log('info', 'No socket connection, so creating one now')
-      // no connection, so initiate and wait for connection
       await this.connect()
     } else {
       this._log('info', 'Ensuring we have a connection before making request')
@@ -350,6 +361,22 @@ class LnMessage {
     if (this._logger && this._logger[level]) {
       this._logger[level](`[${level.toUpperCase()} - ${new Date().toLocaleTimeString()}]: ${msg}`)
     }
+  }
+
+  /** Sends ping messages to ensure connection is open */
+  _startPingMessages() {
+    timer(30000, 30000)
+      .pipe(takeUntil(this.connected$.pipe(filter((x) => !x))))
+      .subscribe(async () => {
+        this._log('info', 'Creating Ping message')
+
+        const message = await this.noise.encryptMessage(new PingMessage().serialize())
+
+        if (this.socket) {
+          this._log('info', 'Sending Ping message')
+          this.socket.send(message)
+        }
+      })
   }
 }
 
