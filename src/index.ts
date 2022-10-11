@@ -33,7 +33,9 @@ class LnMessage {
   public connected$: BehaviorSubject<boolean>
   public connecting: boolean
   public decryptedMsgs$: Observable<Buffer>
-  public commandoMsgs$: Observable<JsonRpcSuccessResponse | JsonRpcErrorResponse>
+  public commandoMsgs$: Observable<
+    (JsonRpcSuccessResponse | JsonRpcErrorResponse) & { reqId: string }
+  >
   public Buffer: BufferConstructor
 
   private _handshakeState: HANDSHAKE_STATE
@@ -70,7 +72,9 @@ class LnMessage {
     this._decryptedMsgs$ = new Subject()
     this.decryptedMsgs$ = this._decryptedMsgs$.asObservable()
     this._commandoMsgs$ = new Subject()
-    this.commandoMsgs$ = this._commandoMsgs$.asObservable().pipe(map(({ response }) => response))
+    this.commandoMsgs$ = this._commandoMsgs$
+      .asObservable()
+      .pipe(map(({ response, id }) => ({ ...response, reqId: id })))
 
     this._multiPartMsg = null
     this._partialCommandoMsg = null
@@ -100,10 +104,13 @@ class LnMessage {
     }
 
     this.socket.onclose = async () => {
-      this._log('info', 'WebSocket is closed')
+      this._log('error', 'WebSocket is closed')
+      this._log('info', `Attempted reconnects: ${this._attemptedReconnects}`)
+
       this.connected$.next(false)
 
       if (this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS && !this._disconnected) {
+        this.connecting = true
         this._log('info', 'Waiting to reconnect')
         await new Promise((resolve) => setTimeout(resolve, this._attemptedReconnects * 1000))
         this.connect()
@@ -123,7 +130,6 @@ class LnMessage {
     this._log('info', 'Manually disconnecting from WebSocket')
     this._disconnected = true
     this.socket && this.socket.close()
-    this.socket = null
   }
 
   async handleMessage(ev: MessageEvent) {
@@ -224,7 +230,9 @@ class LnMessage {
               'info',
               'Received a partial commando message, caching it to join with other parts'
             )
-            this._partialCommandoMsg = decrypted
+            this._partialCommandoMsg = this._partialCommandoMsg
+              ? Buffer.concat([this._partialCommandoMsg, decrypted])
+              : decrypted
             return
           }
 
@@ -252,9 +260,9 @@ class LnMessage {
                 this.socket.send(reply)
                 this._log('info', 'Connected and ready to send messages!')
                 this.connecting = false
+                this.connected$.next(true)
                 this._disconnected = false
                 this._attemptedReconnects = 0
-                this.connected$.next(true)
                 this._startPingMessages()
               }
 
@@ -292,8 +300,9 @@ class LnMessage {
   async commando({
     method,
     params = [],
-    rune
-  }: JsonRpcRequest & { rune: string }): Promise<JsonRpcSuccessResponse['result']> {
+    rune,
+    reqId
+  }: JsonRpcRequest & { rune: string; reqId?: string }): Promise<JsonRpcSuccessResponse['result']> {
     this._log('info', `Commando request method: ${method} params: ${JSON.stringify(params)}`)
 
     // not connected and not initiating a connection currently
@@ -308,16 +317,18 @@ class LnMessage {
 
     const writer = new BufferWriter()
 
-    // create random id to match request with response
-    const idBytes = Buffer.allocUnsafe(8)
-    const id = window.crypto.getRandomValues(idBytes)
-    const idHex = id.toString('hex')
+    if (!reqId) {
+      // create random id to match request with response
+      const idBytes = Buffer.allocUnsafe(8)
+      const id = window.crypto.getRandomValues(idBytes)
+      reqId = id.toString('hex')
+    }
 
     // write the type
     writer.writeUInt16BE(MessageType.CommandoRequest)
 
     // write the id
-    writer.writeBytes(id)
+    writer.writeBytes(Buffer.from(reqId, 'hex'))
 
     // write the request
     writer.writeBytes(
@@ -339,7 +350,7 @@ class LnMessage {
 
       this._log('info', 'Message sent and awaiting response')
       const { response } = await firstValueFrom(
-        this._commandoMsgs$.pipe(filter((commandoMsg) => commandoMsg.id === idHex))
+        this._commandoMsgs$.pipe(filter((commandoMsg) => commandoMsg.id === reqId))
       )
 
       const { result } = response as JsonRpcSuccessResponse

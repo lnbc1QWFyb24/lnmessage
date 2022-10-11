@@ -93,7 +93,7 @@ export class InitMessage implements IWireMessage {
     writer.writeUInt16BE(gflen)
 
     // write features
-    const features = this.features.toBuffer()
+    const features = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0])
     const featuresLen = features.length
     writer.writeUInt16BE(featuresLen)
     writer.writeBytes(features)
