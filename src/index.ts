@@ -38,6 +38,8 @@ class LnMessage {
   >
   public Buffer: BufferConstructor
 
+  private _ls: Buffer
+  private _es: Buffer
   private _handshakeState: HANDSHAKE_STATE
   private _decryptedMsgs$: Subject<Buffer>
   private _commandoMsgs$: Subject<CommandoMessage>
@@ -52,17 +54,17 @@ class LnMessage {
 
     const { remoteNodePublicKey, wsProxy, privateKey, ip, port = 9735, logger } = options
 
-    const ls = Buffer.from(privateKey || createRandomPrivateKey(), 'hex')
-    const es = Buffer.from(createRandomPrivateKey(), 'hex')
+    this._ls = Buffer.from(privateKey || createRandomPrivateKey(), 'hex')
+    this._es = Buffer.from(createRandomPrivateKey(), 'hex')
 
     this.noise = new NoiseState({
-      ls,
-      es
+      ls: this._ls,
+      es: this._es
     })
 
     this.remoteNodePublicKey = remoteNodePublicKey
     this.publicKey = this.noise.lpk.toString('hex')
-    this.privateKey = ls.toString('hex')
+    this.privateKey = this._ls.toString('hex')
     this.wsUrl = wsProxy ? `${wsProxy}/${ip}:${port}` : `wss://${remoteNodePublicKey}@${ip}:${port}`
     this.connected$ = new BehaviorSubject<boolean>(false)
     this.connecting = false
@@ -128,6 +130,13 @@ class LnMessage {
 
   disconnect() {
     this._log('info', 'Manually disconnecting from WebSocket')
+
+    // reset noise state
+    this.noise = new NoiseState({
+      ls: this._ls,
+      es: this._es
+    })
+
     this._disconnected = true
     this.socket && this.socket.close()
   }
