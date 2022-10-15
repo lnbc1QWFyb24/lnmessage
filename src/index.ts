@@ -47,7 +47,7 @@ class LnMessage {
   private _partialCommandoMsg: Buffer | null
   private _attemptedReconnects: number
   private _logger: Logger | void
-  private _disconnected: boolean
+  private _attemptReconnect: boolean
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
@@ -84,11 +84,12 @@ class LnMessage {
     this._logger = logger
   }
 
-  async connect(): Promise<boolean> {
+  async connect(attemptReconnect = true): Promise<boolean> {
     if (this.connected$.getValue()) return true
 
     this._log('info', `Initiating connection to node ${this.remoteNodePublicKey}`)
     this.connecting = true
+    this._attemptReconnect = attemptReconnect
     this._attemptedReconnects += 1
     this.socket = new WebSocket(this.wsUrl)
     this.socket.binaryType = 'arraybuffer'
@@ -111,10 +112,10 @@ class LnMessage {
 
       this.connected$.next(false)
 
-      if (this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS && !this._disconnected) {
+      if (this._attemptReconnect && this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS) {
         this.connecting = true
         this._log('info', 'Waiting to reconnect')
-        await new Promise((resolve) => setTimeout(resolve, this._attemptedReconnects * 1000))
+        await new Promise((resolve) => setTimeout(resolve, (this._attemptedReconnects || 1) * 1000))
         this.connect()
       }
     }
@@ -137,7 +138,7 @@ class LnMessage {
       es: this._es
     })
 
-    this._disconnected = true
+    this._attemptReconnect = false
     this.socket && this.socket.close()
   }
 
@@ -270,7 +271,6 @@ class LnMessage {
                 this._log('info', 'Connected and ready to send messages!')
                 this.connecting = false
                 this.connected$.next(true)
-                this._disconnected = false
                 this._attemptedReconnects = 0
                 this._startPingMessages()
               }
