@@ -269,10 +269,9 @@ class LnMessage {
                 this._log('info', 'Sending Init message reply')
                 this.socket.send(reply)
                 this._log('info', 'Connected and ready to send messages!')
-                this.connecting = false
                 this.connected$.next(true)
+                this.connecting = false
                 this._attemptedReconnects = 0
-                this._startPingMessages()
               }
 
               break
@@ -381,22 +380,6 @@ class LnMessage {
     if (this._logger && this._logger[level]) {
       this._logger[level](`[${level.toUpperCase()} - ${new Date().toLocaleTimeString()}]: ${msg}`)
     }
-  }
-
-  /** Sends ping messages to ensure connection is open */
-  _startPingMessages() {
-    timer(30000, 30000)
-      .pipe(takeUntil(this.connected$.pipe(filter((x) => !x))))
-      .subscribe(async () => {
-        this._log('info', 'Creating Ping message')
-
-        const message = await this.noise.encryptMessage(new PingMessage().serialize())
-
-        if (this.socket) {
-          this._log('info', 'Sending Ping message')
-          this.socket.send(message)
-        }
-      })
   }
 }
 
