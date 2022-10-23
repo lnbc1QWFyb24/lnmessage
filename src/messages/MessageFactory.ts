@@ -5,7 +5,7 @@ import { PongMessage } from './PongMessage'
 import { MessageType } from '../types'
 import { CommandoMessage } from './CommandoMessage'
 
-export function deserialize(buffer: Buffer, len?: number): IWireMessage | { type: number } {
+export function deserialize(buffer: Buffer): IWireMessage | { type: number } {
   const type = buffer.readUInt16BE(0)
 
   switch (type) {
@@ -16,7 +16,7 @@ export function deserialize(buffer: Buffer, len?: number): IWireMessage | { type
     case MessageType.Pong:
       return PongMessage.deserialize(buffer)
     case MessageType.CommandoResponse:
-      return CommandoMessage.deserialize(buffer, len)
+      return CommandoMessage.deserialize(buffer)
   }
 
   return { type }

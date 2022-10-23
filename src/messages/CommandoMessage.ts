@@ -6,7 +6,7 @@ export class CommandoMessage {
    * Processes a buffer containing the message information. This method
    * will capture the id of the commando response as well as the payload
    */
-  public static deserialize(buffer: Buffer, len?: number): CommandoMessage {
+  public static deserialize(buffer: Buffer): CommandoMessage {
     const instance = new CommandoMessage()
     const reader = new BufferReader(buffer)
 
@@ -14,7 +14,7 @@ export class CommandoMessage {
     reader.readUInt16BE()
 
     instance.id = reader.readBytes(8).toString('hex')
-    const json = reader.readBytes(len && len - 10).toString()
+    const json = reader.readBytes(buffer.byteLength - 26).toString()
 
     try {
       instance.response = JSON.parse(json)
