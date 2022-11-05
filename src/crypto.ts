@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js'
 import { Buffer } from 'buffer'
 import secp256k1 from 'secp256k1'
-import { createCipher, createDecipher } from './chacha'
+import { createCipher, createDecipher } from './chacha/index.js'
 
 export function ecdh(pubkey: Uint8Array, privkey: Uint8Array) {
   return Buffer.from(secp256k1.ecdh(pubkey, privkey))
