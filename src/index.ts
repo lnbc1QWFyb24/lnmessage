@@ -325,7 +325,7 @@ class LnMessage {
         this._partialCommandoMsgs[requestId] = this._partialCommandoMsgs[requestId]
           ? Buffer.concat([
               this._partialCommandoMsgs[requestId],
-              message.subarray(0, decrypted.byteLength - 16)
+              message.subarray(0, message.byteLength - 16)
             ])
           : decrypted.subarray(0, decrypted.length - 16)
 
