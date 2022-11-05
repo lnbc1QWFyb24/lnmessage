@@ -1,6 +1,6 @@
 import { Buffer } from 'buffer'
-import Chacha20 from './chacha20'
-import Poly1305 from './poly1305'
+import Chacha20 from './chacha20.js'
+import Poly1305 from './poly1305.js'
 
 class Cipher {
   private alen: number

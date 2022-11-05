@@ -1,4 +1,4 @@
-import { ccpDecrypt, ccpEncrypt, ecdh, getPublicKey, hkdf, sha256 } from './crypto'
+import { ccpDecrypt, ccpEncrypt, ecdh, getPublicKey, hkdf, sha256 } from './crypto.js'
 import type { NoiseStateOptions } from './types'
 import { Buffer } from 'buffer'
 

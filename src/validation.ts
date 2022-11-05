@@ -1,4 +1,4 @@
-import { validPrivateKey, validPublicKey } from './crypto'
+import { validPrivateKey, validPublicKey } from './crypto.js'
 import { LnWebSocketOptions, Logger } from './types'
 
 export function validateInit(options: LnWebSocketOptions): void {
