@@ -16,6 +16,7 @@ export function deserialize(buffer: Buffer): IWireMessage | { type: number } {
     case MessageType.Pong:
       return PongMessage.deserialize(buffer)
     case MessageType.CommandoResponse:
+    case MessageType.CommandoResponseContinues:
       return CommandoMessage.deserialize(buffer)
   }
 

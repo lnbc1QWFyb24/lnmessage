@@ -45,7 +45,7 @@ class LnMessage {
   private _readState: READ_STATE
   private _decryptedMsgs$: Subject<Buffer>
   private _commandoMsgs$: Subject<CommandoMessage>
-  private _partialCommandoMsg: Buffer | null
+  private _partialCommandoMsgs: Record<string, Buffer>
   private _attemptedReconnects: number
   private _logger: Logger | void
   private _attemptReconnect: boolean
@@ -82,7 +82,7 @@ class LnMessage {
       .asObservable()
       .pipe(map(({ response, id }) => ({ ...response, reqId: id })))
 
-    this._partialCommandoMsg = null
+    this._partialCommandoMsgs = {}
     this._attemptedReconnects = 0
     this._logger = logger
     this._readState = READ_STATE.READY_FOR_LEN
@@ -308,9 +308,11 @@ class LnMessage {
 
   async handleDecryptedMessage(decrypted: Buffer) {
     try {
-      const type = decrypted.readUInt16BE()
-
+      const reader = new BufferReader(decrypted)
+      const type = reader.readUInt16BE()
       const [typeName] = Object.entries(MessageType).find(([name, val]) => val === type) || []
+      const requestId = reader.readBytes(8).toString('hex')
+      const message = reader.readBytes()
 
       this._log('info', `Message type is: ${typeName || 'unknown'}`)
 
@@ -319,20 +321,26 @@ class LnMessage {
           'info',
           'Received a partial commando message, caching it to join with other parts'
         )
-        this._partialCommandoMsg = this._partialCommandoMsg
-          ? Buffer.concat([this._partialCommandoMsg, decrypted])
-          : decrypted
+
+        this._partialCommandoMsgs[requestId] = this._partialCommandoMsgs[requestId]
+          ? Buffer.concat([
+              this._partialCommandoMsgs[requestId],
+              message.subarray(0, decrypted.byteLength - 16)
+            ])
+          : decrypted.subarray(0, decrypted.length - 16)
+
         return
       }
 
-      if (type === MessageType.CommandoResponse && this._partialCommandoMsg) {
+      if (type === MessageType.CommandoResponse && this._partialCommandoMsgs[requestId]) {
         this._log(
           'info',
           'Received a final commando msg and we have a partial message to join it to. Joining now'
         )
+
         // join commando msg chunks
-        decrypted = Buffer.concat([this._partialCommandoMsg, decrypted])
-        this._partialCommandoMsg = null
+        decrypted = Buffer.concat([this._partialCommandoMsgs[requestId], message])
+        delete this._partialCommandoMsgs[requestId]
       }
 
       // deserialise
