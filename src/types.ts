@@ -25,8 +25,7 @@ export type LnWebSocketOptions = {
    */
   privateKey?: string
   /**
-   * 32 byte hex encoded private key to be used as the local node secret.
-   * Use this to ensure a consistent local node identity across connection sessions
+   Logger object to log info, warn, and error logs
    */
   logger?: Logger
 }
@@ -139,7 +138,13 @@ export enum READ_STATE {
 }
 
 export type JsonRpcRequest = {
+  /**The RPC method you would like to call*/
   method: string
+  /**The params to for the above method.
+   * Can be an object with named parameters (like the -k options for the CLI)
+   * or an array of ordered params. If no value is passed in it defaults to an
+   * empty array
+   */
   params?: unknown | unknown[]
 }
 
@@ -154,6 +159,19 @@ export type JsonRpcErrorResponse = JsonRpcBaseResponse & {
   error: { code: number; message: string; data?: unknown }
 }
 
+export type CommandoRequest = JsonRpcRequest & {
+  /**Base64 encoded rune token as outputted by the commando-rune cli command
+   * If the rune does not have adequate permissions for this request an error will
+   * be returned
+   */
+  rune: string
+  /**Optional 8 byte hex encoded random string for matching the request to a response
+   * Lnmessage will handle this automatically, but in some instances it is handy to know the
+   * request id ahead of time
+   */
+  reqId?: string
+}
+
 export type CommandoResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse
 
 export type Logger = {
@@ -161,5 +179,3 @@ export type Logger = {
   warn: (msg: string) => void
   error: (msg: string) => void
 }
-
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected'

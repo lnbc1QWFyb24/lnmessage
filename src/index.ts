@@ -19,24 +19,46 @@ import {
   JsonRpcRequest,
   JsonRpcSuccessResponse,
   JsonRpcErrorResponse,
-  Logger
+  Logger,
+  CommandoRequest
 } from './types'
 
 const DEFAULT_RECONNECT_ATTEMPTS = 5
 
 class LnMessage {
+  /**The underlying Noise protocol. Can be used if you want to play around with the low level Lightning transport protocol*/
   public noise: NoiseState
+  /**The public key of the node that Lnmessage is connected to*/
   public remoteNodePublicKey: string
+  /**The public key Lnmessage uses when connecting to a remote node
+   * If you passed in a private key when initialising,
+   * this public key will be derived from it and can be used for persistent identity
+   * across session connections
+   */
   public publicKey: string
+  /**The private key that was either passed in on init or generated automatically
+   * Reuse this when reconnecting for persistent id
+   */
   public privateKey: string
+  /**The url that the WebSocket will connect to. It uses the wsProxy option if provided
+   * or otherwise will initiate a WebSocket connection directly to the node
+   */
   public wsUrl: string
+  /**The WebSocket instance*/
   public socket: WebSocket | null
+  /**Observable for subscribing to connection/disconnection*/
   public connected$: BehaviorSubject<boolean>
+  /**Boolean indicating whether currently connecting or not*/
   public connecting: boolean
+  /**Observable stream of decypted messages. This can be used to extend Lnmessage
+   * functionality so that it can handle other Lightning message types
+   */
   public decryptedMsgs$: Observable<Buffer>
+  /**Obserable stream of all commando response messages*/
   public commandoMsgs$: Observable<
     (JsonRpcSuccessResponse | JsonRpcErrorResponse) & { reqId: string }
   >
+  /**Node JS Buffer instance, useful if handling decrypted messages manually*/
   public Buffer: BufferConstructor
 
   private _ls: Buffer
@@ -394,7 +416,7 @@ class LnMessage {
     params = [],
     rune,
     reqId
-  }: JsonRpcRequest & { rune: string; reqId?: string }): Promise<JsonRpcSuccessResponse['result']> {
+  }: CommandoRequest): Promise<JsonRpcSuccessResponse['result']> {
     this._log('info', `Commando request method: ${method} params: ${JSON.stringify(params)}`)
 
     // not connected and not initiating a connection currently

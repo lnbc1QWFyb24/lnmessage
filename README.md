@@ -22,7 +22,7 @@ Talk to Lightning nodes from your browser.
 
 `npm i lnmessage`
 
-## Examples
+## Quickstart
 
 ```javascript
 import Lnmessage from 'lnmessage'
@@ -54,6 +54,174 @@ async function connect() {
 }
 
 connect()
+```
+
+## Initialisation
+
+```typescript
+type LnWebSocketOptions = {
+  /**
+   * 33-byte hex remote compressed public key.
+   * The identity of the node you would like to initiate a connection with
+   */
+  remoteNodePublicKey: string
+  /**
+   * The IP address of the remote node
+   */
+  ip: string
+  /**
+   * The port of the remote node. Defaults to 9735
+   */
+  port?: number
+  /**
+   * A WebSocket proxy endpoint for the browser to connect to,
+   * so that a server can create a direct connection to the node without the need for a tls certificate runnning on the remote node
+   * or if the Lightning node implementation does not support WebSocket connections directly
+   * Checkout https://github.com/clams-tech/lnsocket-proxy and https://github.com/jb55/ln-ws-proxy
+   */
+  wsProxy?: string
+  /**
+   * 32 byte hex encoded private key to be used as the local node secret.
+   * Use this to ensure a consistent local node identity across connection sessions
+   */
+  privateKey?: string
+  /**
+   Logger object to log info, warn, and error logs
+   */
+  logger?: Logger
+}
+
+const options: LnWebSocketOptions = {
+  remoteNodePublicKey: '02df5ffe895c778e10f7742a6c5b8a0cefbe9465df58b92fadeb883752c8107c8f',
+  wsProxy: 'wss://<WEBSOCKET_PROXY>',
+  ip: '35.232.170.67',
+  port: 9735,
+  privateKey: 'd6a2eba36168cc31e97396a781a4dd46dd3648c001d3f4fde221d256e41715ea',
+  logger: {
+    info: console.log,
+    warn: console.warn,
+    error: console.error
+  }
+}
+
+const ln = new Lnmessage(options)
+```
+
+## Connecting
+
+```javascript
+const connected = await ln.connect()
+
+if (connected) {
+  console.log('Connected and ready to send/receive messages')
+}
+```
+
+## Commando RPC Requests
+
+If you are connecting to a Core Ln node and you have a valid [rune](https://lightning.readthedocs.io/lightning-commando-rune.7.html) authentication token, you can use Lnmessage to securely call the node RPC server using the `commando` method.
+
+```typescript
+type CommandoRequest = {
+  /**The RPC method you would like to call*/
+  method: string
+  /**The params to for the above method.
+   * Can be an object with named parameters (like the -k options for the CLI)
+   * or an array of ordered params. If no value is passed in it defaults to an
+   * empty array
+   */
+  params?: unknown | unknown[]
+  /**Base64 encoded rune token as outputted by the commando-rune cli command
+   * If the rune does not have adequate permissions for this request an error will
+   * be returned
+   */
+  rune: string
+  /**Optional 8 byte hex encoded random string for matching the request to a response
+   * Lnmessage will handle this automatically, but in some instances it is handy to know the
+   * request id ahead of time
+   */
+  reqId?: string
+}
+
+// Basic Get Info request
+const getInfoRequest: CommandoRequest = {
+  method: 'getinfo',
+  rune: '7jN2zKjkWlvncm_La3uZc9vLVGLu7xl9oBoun6pth7E9MA=='
+}
+
+const getInfoReponse = await ln.commando(getInfoRequest)
+
+// Some helpers for creating a request id
+function toHexString(byteArray: Uint8Array) {
+  return byteArray.reduce((output, elem) => output + ('0' + elem.toString(16)).slice(-2), '')
+}
+
+function createRandomHex(length = 32) {
+  const bytes = new Uint8Array(length)
+  return toHexString(crypto.getRandomValues(bytes))
+}
+
+// 8 byte random hex string request id
+const reqId = await createRandomHex(8)
+
+// a request utilising the reqId param
+const waitInvoiceRequest: CommandoRequest = {
+  method: 'waitanyinvoice',
+  params: { lastpay_index: lastPayIndex },
+  rune: '7jN2zKjkWlvncm_La3uZc9vLVGLu7xl9oBoun6pth7E9MA==',
+  reqId
+}
+
+const invoiceUpdate = await ln.commando(waitInvoiceRequest)
+```
+
+## API
+
+RxJs Observables are used throughout the API and are indicated by a `$` at the end of the variable name. You do not need to use or understand RxJs to make use of these variables. Simply call the `subscribe` method on these variable and pass in a call back for all updates and then call the `unsubscribe` method on the returned object when you no longer want to receive updates.
+
+```typescript
+class Lnmessage {
+  /**The underlying Noise protocol. Can be used if you want to play around with the low level Lightning transport protocol*/
+  public noise: NoiseState
+  /**The public key of the node that Lnmessage is connected to*/
+  public remoteNodePublicKey: string
+  /**The public key Lnmessage uses when connecting to a remote node
+   * If you passed in a private key when initialising,
+   * this public key will be derived from it and can be used for persistent identity
+   * across session connections
+   */
+  public publicKey: string
+  /**The private key that was either passed in on init or generated automatically
+   * Reuse this when reconnecting for persistent id
+   */
+  public privateKey: string
+  /**The url that the WebSocket will connect to. It uses the wsProxy option if provided
+   * or otherwise will initiate a WebSocket connection directly to the node
+   */
+  public wsUrl: string
+  /**The WebSocket instance*/
+  public socket: WebSocket | null
+  /**Observable for subscribing to connection/disconnection*/
+  public connected$: BehaviorSubject<boolean>
+  /**Boolean indicating whether currently connecting or not*/
+  public connecting: boolean
+  /**Observable stream of decypted messages. This can be used to extend Lnmessage
+   * functionality so that it can handle other Lightning message types
+   */
+  public decryptedMsgs$: Observable<Buffer>
+  /**Obserable stream of all commando response messages*/
+  public commandoMsgs$: Observable<
+    (JsonRpcSuccessResponse | JsonRpcErrorResponse) & { reqId: string }
+  >
+  /**Node JS Buffer instance, useful if handling decrypted messages manually*/
+  public Buffer: BufferConstructor
+  /**Connect to the remote node*/
+  public connect(attemptReconnect = true): Promise<boolean>
+  /**Disconnect from the remote node*/
+  public disconnect(): void
+  /**Commando requests*/
+  public commando(request: CommandoRequest): Promise<JsonRpcSuccessResponse['result']>
+}
 ```
 
 ## WebSocket Proxy
