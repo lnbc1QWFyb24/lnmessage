@@ -236,6 +236,28 @@ So to simplify connecting to any Lightning node, you can go through a WebSocket 
 - Most connections will need to be made via a WebSocket proxy server. See the WebSocket proxy section.
 - Clearnet only. I am pretty sure that this will not work out of the box with TOR connections, but I still need to try it in a TOR browser to see if it works.
 
+### Webpack issue
+
+[This rule](https://webpack.js.org/configuration/module/#resolvefullyspecified) needs to be added:
+
+```js
+      {
+        test: /\.m?js/,
+        resolve: {
+          fullySpecified: false
+        }
+      },
+```
+
+To avoid this error during a build:
+
+```sh
+BREAKING CHANGE: The request [FILE] failed to resolve only because it was resolved as fully specified
+(probably because the origin is strict EcmaScript Module, e. g. a module with javascript mimetype, a '*.mjs' file, or a '*.js' file where the package.json contains '"type": "module"').
+The extension in the request is mandatory for it to be fully specified.
+Add the extension to the request.
+```
+
 ## Running Locally
 
 ### Install Deps
