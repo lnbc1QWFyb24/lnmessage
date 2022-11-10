@@ -1,10 +1,10 @@
 import { Buffer } from 'buffer'
-import { BufferReader, BufferWriter } from './buf'
-import { BitField } from './BitField'
-import { InitFeatureFlags } from './InitFeatureFlags'
+import { BufferReader, BufferWriter } from './buf.js'
+import { BitField } from './BitField.js'
+import { InitFeatureFlags } from './InitFeatureFlags.js'
 import { MessageType } from '../types'
-import { readTlvs } from './read-tlvs'
-import { IWireMessage } from './IWireMessage'
+import { readTlvs } from './read-tlvs.js'
+import { IWireMessage } from './IWireMessage.js'
 
 /**
  * InitMessage is defined in BOLT #1. Once authentication is complete, the first
