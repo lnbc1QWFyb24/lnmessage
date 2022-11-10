@@ -1,5 +1,5 @@
 import { validPrivateKey, validPublicKey } from './crypto.js'
-import { LnWebSocketOptions } from './types'
+import { LnWebSocketOptions } from './types.js'
 
 export function validateInit(options: LnWebSocketOptions): void {
   const { remoteNodePublicKey, wsProxy, privateKey, ip, port, logger } = options

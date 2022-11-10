@@ -1,4 +1,4 @@
-import { MessageType } from '../types'
+import { MessageType } from '../types.js'
 
 export interface IWireMessage {
   type: MessageType
