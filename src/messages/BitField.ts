@@ -1,4 +1,4 @@
-import * as bigintutil from './BigIntUtils'
+import * as bigintutil from './BigIntUtils.js'
 import { Buffer } from 'buffer'
 
 type BigIntInput = string | number | bigint | boolean

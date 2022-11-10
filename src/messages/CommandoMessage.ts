@@ -1,4 +1,4 @@
-import { BufferReader } from './buf'
+import { BufferReader } from './buf.js'
 import { CommandoResponse, JsonRpcErrorResponse, MessageType } from '../types'
 
 export class CommandoMessage {

@@ -1,4 +1,4 @@
-import { BufferReader } from './buf'
+import { BufferReader } from './buf.js'
 
 /**
  * Reads TLVs from a reader until the entire stream is processed. The handler is
