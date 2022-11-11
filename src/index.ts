@@ -21,7 +21,7 @@ import {
   JsonRpcErrorResponse,
   Logger,
   CommandoRequest
-} from './types'
+} from './types.js'
 
 const DEFAULT_RECONNECT_ATTEMPTS = 5
 
