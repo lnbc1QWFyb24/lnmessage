@@ -1,5 +1,5 @@
 import { BufferReader } from './buf.js'
-import { CommandoResponse, JsonRpcErrorResponse, MessageType } from '../types'
+import { CommandoResponse, JsonRpcErrorResponse, MessageType } from '../types.js'
 
 export class CommandoMessage {
   /**

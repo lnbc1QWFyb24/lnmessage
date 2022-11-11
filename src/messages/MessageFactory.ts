@@ -3,7 +3,7 @@ import { InitMessage } from './InitMessage.js'
 import { PingMessage } from './PingMessage.js'
 import { PongMessage } from './PongMessage.js'
 import { CommandoMessage } from './CommandoMessage.js'
-import { MessageType } from '../types'
+import { MessageType } from '../types.js'
 
 export function deserialize(buffer: Buffer): IWireMessage | { type: number } {
   const type = buffer.readUInt16BE(0)

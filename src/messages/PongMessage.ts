@@ -1,6 +1,6 @@
 import { Buffer } from 'buffer'
 import { BufferReader, BufferWriter } from './buf.js'
-import { MessageType } from '../types'
+import { MessageType } from '../types.js'
 import { IWireMessage } from './IWireMessage.js'
 
 export class PongMessage implements IWireMessage {

@@ -2,7 +2,7 @@ import { Buffer } from 'buffer'
 import { BufferReader, BufferWriter } from './buf.js'
 import { BitField } from './BitField.js'
 import { InitFeatureFlags } from './InitFeatureFlags.js'
-import { MessageType } from '../types'
+import { MessageType } from '../types.js'
 import { readTlvs } from './read-tlvs.js'
 import { IWireMessage } from './IWireMessage.js'
 
