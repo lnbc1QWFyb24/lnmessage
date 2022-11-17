@@ -17,7 +17,7 @@ export function hmacHash(key: Buffer, input: Buffer) {
 }
 
 export async function sha256(input: Buffer): Promise<Buffer> {
-  const res = await window.crypto.subtle.digest('SHA-256', input)
+  const res = await crypto.subtle.digest('SHA-256', input)
   return Buffer.from(res)
 }
 
@@ -100,7 +100,7 @@ export function createRandomPrivateKey(): string {
   let privKey
   do {
     const bytes = Buffer.allocUnsafe(32)
-    privKey = window.crypto.getRandomValues(bytes)
+    privKey = crypto.getRandomValues(bytes)
   } while (!validPrivateKey(privKey))
 
   return privKey.toString('hex')

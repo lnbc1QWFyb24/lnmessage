@@ -434,7 +434,7 @@ class LnMessage {
     if (!reqId) {
       // create random id to match request with response
       const idBytes = Buffer.allocUnsafe(8)
-      const id = window.crypto.getRandomValues(idBytes)
+      const id = crypto.getRandomValues(idBytes)
       reqId = id.toString('hex')
     }
 
