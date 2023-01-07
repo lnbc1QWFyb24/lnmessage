@@ -1,11 +1,12 @@
 # lnmessage
 
-Talk to Lightning nodes from your browser.
+Talk to Lightning nodes from the Browser or NodeJS(after polyfill) apps.
 
 ## Features
 
 - Connect to a lightning node via a WebSocket connection.
-- Works in the browser without any polyfilling.
+- Works in the Browser without any polyfilling.
+- Works in NodeJS with a simple polyfill
 - Initialise with a session secret to have a persistent node public key for the browser.
 - Control a Core Lightning node via [Commando](https://lightning.readthedocs.io/lightning-commando.7.html) RPC calls.
 - Automatic handling of ping messages to ensure constant connection to the node.
@@ -223,6 +224,39 @@ class Lnmessage {
   public commando(request: CommandoRequest): Promise<JsonRpcSuccessResponse['result']>
 }
 ```
+
+## NodeJS Polyfill
+
+Lnmessage is designed for the browser, but can be adapted to work in NodeJS apps with a simple polyfill:
+
+1. Install `ws` dependency
+
+**Yarn**
+`yarn add ws`
+`yarn add -D @types/ws`
+
+**NPM**
+
+`npm i ws`
+`npm install --save-dev @types/ws`
+
+2. Create a `polyfills.ts` file
+
+```typescript
+import WebSocket from 'ws'
+import crypto from 'crypto'
+
+if (!(<any>global).crypto) {
+  ;(<any>global).crypto = crypto
+}
+
+if (!(<any>global).WebSocket) {
+  ;(<any>global).WebSocket = WebSocket
+}
+```
+
+3. Include polyfills.ts file in your tsconfig.json's includes section.
+4. Import and initialise polyfills.ts at the start of your project.
 
 ## WebSocket Proxy
 
