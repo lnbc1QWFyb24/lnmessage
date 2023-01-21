@@ -82,6 +82,10 @@ type LnWebSocketOptions = {
    */
   wsProxy?: string
   /**
+   * When connecting directly to a node, the protocol to use. Defaults to 'wss://'
+   */
+  wsProtocol?: 'ws:' | 'wss:'
+  /**
    * 32 byte hex encoded private key to be used as the local node secret.
    * Use this to ensure a consistent local node identity across connection sessions
    */

@@ -16,7 +16,6 @@ import {
   HANDSHAKE_STATE,
   READ_STATE,
   MessageType,
-  JsonRpcRequest,
   JsonRpcSuccessResponse,
   JsonRpcErrorResponse,
   Logger,
@@ -78,7 +77,15 @@ class LnMessage {
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
 
-    const { remoteNodePublicKey, wsProxy, privateKey, ip, port = 9735, logger } = options
+    const {
+      remoteNodePublicKey,
+      wsProxy,
+      wsProtocol = 'wss:',
+      privateKey,
+      ip,
+      port = 9735,
+      logger
+    } = options
 
     this._ls = Buffer.from(privateKey || createRandomPrivateKey(), 'hex')
     this._es = Buffer.from(createRandomPrivateKey(), 'hex')
@@ -91,7 +98,7 @@ class LnMessage {
     this.remoteNodePublicKey = remoteNodePublicKey
     this.publicKey = this.noise.lpk.toString('hex')
     this.privateKey = this._ls.toString('hex')
-    this.wsUrl = wsProxy ? `${wsProxy}/${ip}:${port}` : `wss://${remoteNodePublicKey}@${ip}:${port}`
+    this.wsUrl = wsProxy ? `${wsProxy}/${ip}:${port}` : `${wsProtocol}//${ip}:${port}`
     this.connected$ = new BehaviorSubject<boolean>(false)
     this.connecting = false
     this.Buffer = Buffer

@@ -10,8 +10,11 @@ export function validateInit(options: LnWebSocketOptions): void {
 
   const ipRegex = /^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)(\.(?!$)|$)){4}$/
 
-  if (!ip || !ip.match(ipRegex)) {
-    throw new Error(`${ip} is not a valid IP address`)
+  const domainRegex =
+    /^((?!-))(xn--)?[a-z0-9][a-z0-9-_]{0,61}[a-z0-9]{0,1}\.(xn--)?([a-z0-9-]{1,61}|[a-z0-9-]{1,30}\.[a-z]{2,})$/
+
+  if (!ip || !ip.match(ipRegex) || ip.match(domainRegex)) {
+    throw new Error(`${ip} is not a valid IP or DNS address`)
   }
 
   if (!port || port < 1 || port > 65535) {
@@ -20,6 +23,7 @@ export function validateInit(options: LnWebSocketOptions): void {
 
   if (wsProxy) {
     const errMsg = `${wsProxy} is not a valid url`
+
     try {
       const url = new URL(wsProxy)
       if (url.protocol !== 'wss:' && url.protocol !== 'ws:') {
