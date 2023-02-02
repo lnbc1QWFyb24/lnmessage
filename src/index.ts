@@ -52,7 +52,7 @@ class LnMessage {
   public connected$: BehaviorSubject<boolean>
   /**
    * Observable that indicates the current socket connection status
-   * Can be either 'connected', 'connecting' or 'disconnected'.
+   * Can be either 'connected', 'connecting', 'waiting_reconnect' or 'disconnected'.
    */
   public connectionStatus$: BehaviorSubject<ConnectionStatus>
   /**

@@ -208,7 +208,7 @@ class Lnmessage {
   public socket: WebSocket | null
   /**
    * Observable that indicates the current socket connection status
-   * Can be either 'connected', 'connecting' or 'disconnected'.
+   * Can be either 'connected', 'connecting', 'waiting_reconnect' or 'disconnected'.
    */
   public connectionStatus$: BehaviorSubject<ConnectionStatus>
   /**Observable stream of decypted messages. This can be used to extend Lnmessage
