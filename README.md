@@ -206,10 +206,11 @@ class Lnmessage {
   public wsUrl: string
   /**The WebSocket instance*/
   public socket: WebSocket | null
-  /**Observable for subscribing to connection/disconnection*/
-  public connected$: BehaviorSubject<boolean>
-  /**Boolean indicating whether currently connecting or not*/
-  public connecting: boolean
+  /**
+   * Observable that indicates the current socket connection status
+   * Can be either 'connected', 'connecting', 'waiting_reconnect' or 'disconnected'.
+   */
+  public connectionStatus$: BehaviorSubject<ConnectionStatus>
   /**Observable stream of decypted messages. This can be used to extend Lnmessage
    * functionality so that it can handle other Lightning message types
    */
