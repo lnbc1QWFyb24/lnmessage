@@ -1,5 +1,5 @@
 import { BehaviorSubject, firstValueFrom, Observable, Subject } from 'rxjs'
-import { filter, map, skip } from 'rxjs/operators'
+import { filter, map } from 'rxjs/operators'
 import { Buffer } from 'buffer'
 import { createRandomPrivateKey } from './crypto.js'
 import { NoiseState } from './noise-state.js'
@@ -19,7 +19,8 @@ import {
   JsonRpcSuccessResponse,
   JsonRpcErrorResponse,
   Logger,
-  CommandoRequest
+  CommandoRequest,
+  ConnectionStatus
 } from './types.js'
 
 const DEFAULT_RECONNECT_ATTEMPTS = 5
@@ -45,9 +46,18 @@ class LnMessage {
   public wsUrl: string
   /**The WebSocket instance*/
   public socket: WebSocket | null
-  /**Observable for subscribing to connection/disconnection*/
+  /**
+   * @deprecated Use connectionStatus$ instead
+   */
   public connected$: BehaviorSubject<boolean>
-  /**Boolean indicating whether currently connecting or not*/
+  /**
+   * Observable that indicates the current socket connection status
+   * Can be either 'connected', 'connecting' or 'disconnected'.
+   */
+  public connectionStatus$: BehaviorSubject<ConnectionStatus>
+  /**
+   * @deprecated Use connectionStatus$ instead
+   */
   public connecting: boolean
   /**Observable stream of decypted messages. This can be used to extend Lnmessage
    * functionality so that it can handle other Lightning message types
@@ -99,6 +109,7 @@ class LnMessage {
     this.publicKey = this.noise.lpk.toString('hex')
     this.privateKey = this._ls.toString('hex')
     this.wsUrl = wsProxy ? `${wsProxy}/${ip}:${port}` : `${wsProtocol}//${ip}:${port}`
+    this.connectionStatus$ = new BehaviorSubject<ConnectionStatus>('disconnected')
     this.connected$ = new BehaviorSubject<boolean>(false)
     this.connecting = false
     this.Buffer = Buffer
@@ -124,20 +135,34 @@ class LnMessage {
   }
 
   async connect(attemptReconnect = true): Promise<boolean> {
-    if (this.connected$.getValue()) {
+    const currentStatus = this.connectionStatus$.value
+
+    // already connected
+    if (currentStatus === 'connected') {
       return true
     }
 
-    this.connecting = true
+    // connecting so return connected status
+    if (currentStatus === 'connecting') {
+      return firstValueFrom(
+        this.connectionStatus$.pipe(
+          filter((status) => status === 'connected' || status === 'disconnected'),
+          map((status) => status === 'connected')
+        )
+      )
+    }
+
     this._log('info', `Initiating connection to node ${this.remoteNodePublicKey}`)
+    this.connecting = true
+    this.connectionStatus$.next('connecting')
     this._attemptReconnect = attemptReconnect
-    this._attemptedReconnects += 1
     this.socket = new WebSocket(this.wsUrl)
     this.socket.binaryType = 'arraybuffer'
 
     this.socket.onopen = async () => {
       this._log('info', 'WebSocket is connected')
       this._log('info', 'Creating Act1 message')
+
       const msg = await this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
 
       if (this.socket) {
@@ -149,15 +174,21 @@ class LnMessage {
 
     this.socket.onclose = async () => {
       this._log('error', 'WebSocket is closed')
-      this._log('info', `Attempted reconnects: ${this._attemptedReconnects}`)
 
+      this.connectionStatus$.next('disconnected')
       this.connected$.next(false)
 
       if (this._attemptReconnect && this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS) {
-        this.connecting = true
         this._log('info', 'Waiting to reconnect')
+        this._log('info', `Attempted reconnects: ${this._attemptedReconnects}`)
+
+        this.connectionStatus$.next('waiting_reconnect')
+        this.connecting = true
+
         await new Promise((resolve) => setTimeout(resolve, (this._attemptedReconnects || 1) * 1000))
+
         this.connect()
+        this._attemptedReconnects += 1
       }
     }
 
@@ -167,7 +198,12 @@ class LnMessage {
 
     this.socket.onmessage = this.queueMessage.bind(this)
 
-    return firstValueFrom(this.connected$.pipe(skip(1)))
+    return firstValueFrom(
+      this.connectionStatus$.pipe(
+        filter((status) => status === 'connected' || status === 'disconnected'),
+        map((status) => status === 'connected')
+      )
+    )
   }
 
   private queueMessage(event: MessageEvent) {
@@ -343,7 +379,7 @@ class LnMessage {
       const requestId = reader.readBytes(8).toString('hex')
       const message = reader.readBytes()
 
-      this._log('info', `Message type is: ${typeName || 'unknown'}`)
+      this._log('info', `Received message type is: ${typeName || 'unknown'}`)
 
       if (type === MessageType.CommandoResponseContinues) {
         this._log(
@@ -384,7 +420,10 @@ class LnMessage {
           if (this.socket) {
             this._log('info', 'Sending Init message reply')
             this.socket.send(reply)
+
             this._log('info', 'Connected and ready to send messages!')
+
+            this.connectionStatus$.next('connected')
             this.connected$.next(true)
             this.connecting = false
             this._attemptedReconnects = 0
@@ -396,6 +435,7 @@ class LnMessage {
         case MessageType.Ping: {
           this._log('info', 'Received a Ping message')
           this._log('info', 'Creating a Pong message')
+
           const pongMessage = new PongMessage((payload as PingMessage).numPongBytes).serialize()
           const pong = await this.noise.encryptMessage(pongMessage)
 
@@ -426,14 +466,23 @@ class LnMessage {
   }: CommandoRequest): Promise<JsonRpcSuccessResponse['result']> {
     this._log('info', `Commando request method: ${method} params: ${JSON.stringify(params)}`)
 
-    // not connected and not initiating a connection currently
-    if (!this.connected$.getValue() && !this.connecting) {
+    // not connected, so initiate a connection
+    if (this.connectionStatus$.value === 'disconnected') {
       this._log('info', 'No socket connection, so creating one now')
-      await this.connect()
+
+      const connected = await this.connect()
+
+      if (!connected) {
+        throw {
+          code: 2,
+          message: 'Could not establish a connection to node'
+        }
+      }
     } else {
       this._log('info', 'Ensuring we have a connection before making request')
+
       // ensure that we are connected before making any requests
-      await firstValueFrom(this.connected$.pipe(filter((connected) => connected === true)))
+      await firstValueFrom(this.connectionStatus$.pipe(filter((status) => status === 'connected')))
     }
 
     const writer = new BufferWriter()
@@ -470,12 +519,14 @@ class LnMessage {
       this.socket.send(message)
 
       this._log('info', 'Message sent and awaiting response')
+
       const { response } = await firstValueFrom(
         this._commandoMsgs$.pipe(filter((commandoMsg) => commandoMsg.id === reqId))
       )
 
       const { result } = response as JsonRpcSuccessResponse
       const { error } = response as JsonRpcErrorResponse
+
       this._log(
         'info',
         result ? 'Successful response received' : `Error response received: ${error.message}`
