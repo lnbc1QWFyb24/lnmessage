@@ -397,7 +397,7 @@ class LnMessage {
               this._partialCommandoMsgs[requestId],
               message.subarray(0, message.byteLength - 16)
             ])
-          : Buffer.from(decrypted.subarray(0, decrypted.length - 16))
+          : decrypted.subarray(0, decrypted.length - 16)
 
         return
       }
