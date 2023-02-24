@@ -9,7 +9,7 @@ class Poly1305 {
   public finished: number
 
   constructor(key: Buffer) {
-    this.buffer = new Buffer(16)
+    this.buffer = Buffer.alloc(16)
     this.leftover = 0
     this.r = new Uint16Array(10)
     this.h = new Uint16Array(10)
@@ -126,7 +126,7 @@ class Poly1305 {
   }
 
   finish() {
-    let mac = new Buffer(16),
+    let mac = Buffer.alloc(16),
       g = new Uint16Array(10),
       c = 0,
       mask = 0,

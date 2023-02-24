@@ -27,7 +27,7 @@ class Cipher {
     }
     this.alen = aad.length
     this.poly.update(aad)
-    const padding = new Buffer(padAmount(this.alen))
+    const padding = Buffer.alloc(padAmount(this.alen))
     if (padding.length) {
       padding.fill(0)
       this.poly.update(padding)
@@ -83,14 +83,14 @@ class Cipher {
       throw new Error('Unsupported state or unable to authenticate data')
     }
 
-    const padding = new Buffer(padAmount(this.clen))
+    const padding = Buffer.alloc(padAmount(this.clen))
 
     if (padding.length) {
       padding.fill(0)
       this.poly.update(padding)
     }
 
-    const lens = new Buffer(16)
+    const lens = Buffer.alloc(16)
     lens.fill(0)
     lens.writeUInt32LE(this.alen, 0)
     lens.writeUInt32LE(this.clen, 8)
@@ -110,7 +110,7 @@ class Cipher {
 
   getAuthTag() {
     if (this._decrypt || this.tag === null) {
-      return new Buffer('')
+      return Buffer.from('')
     }
     return this.tag
   }

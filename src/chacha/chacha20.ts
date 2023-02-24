@@ -37,7 +37,7 @@ class Chacha20 {
 
     this.cachePos = 64
     this.buffer = new Uint32Array(16)
-    this.output = new Buffer(64)
+    this.output = Buffer.alloc(64)
   }
 
   quarterRound(a: number, b: number, c: number, d: number) {
@@ -91,7 +91,7 @@ class Chacha20 {
 
   getBytes(len: number) {
     let dpos = 0
-    const dst = new Buffer(len)
+    const dst = Buffer.alloc(len)
     const cacheLen = 64 - this.cachePos
 
     if (cacheLen) {
