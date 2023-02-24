@@ -1,12 +1,11 @@
 # lnmessage
 
-Talk to Lightning nodes from the Browser or NodeJS(after polyfill) apps.
+Talk to Lightning nodes from the Browser and NodeJS apps.
 
 ## Features
 
 - Connect to a lightning node via a WebSocket connection.
-- Works in the Browser without any polyfilling.
-- Works in NodeJS with a simple polyfill
+- Works in the Browser and Node without any polyfilling.
 - Initialise with a session secret to have a persistent node public key for the browser.
 - Control a Core Lightning node via [Commando](https://lightning.readthedocs.io/lightning-commando.7.html) RPC calls.
 - Automatic handling of ping messages to ensure constant connection to the node.
@@ -82,7 +81,7 @@ type LnWebSocketOptions = {
    */
   wsProxy?: string
   /**
-   * When connecting directly to a node, the protocol to use. Defaults to 'wss://'
+   * When connecting directly to a node and not using a proxy, the protocol to use. Defaults to 'wss://'
    */
   wsProtocol?: 'ws:' | 'wss:'
   /**
@@ -230,50 +229,15 @@ class Lnmessage {
 }
 ```
 
-## NodeJS Polyfill
-
-Lnmessage is designed for the browser, but can be adapted to work in NodeJS apps with a simple polyfill:
-
-1. Install `ws` dependency
-
-**Yarn**
-`yarn add ws`
-`yarn add -D @types/ws`
-
-**NPM**
-
-`npm i ws`
-`npm install --save-dev @types/ws`
-
-2. Create a `polyfills.ts` file
-
-```typescript
-import WebSocket from 'ws'
-import crypto from 'crypto'
-
-if (!(<any>global).crypto) {
-  ;(<any>global).crypto = crypto
-}
-
-if (!(<any>global).WebSocket) {
-  ;(<any>global).WebSocket = WebSocket
-}
-```
-
-3. Include polyfills.ts file in your tsconfig.json's includes section.
-4. Import and initialise polyfills.ts at the start of your project.
-
 ## WebSocket Proxy
 
 There are some limitations to connecting to Lightning nodes within a browser. Core Lightning nodes can be directly connected to if the [`experimental-websocket-port`](https://lightning.readthedocs.io/lightningd-config.5.html#experimental-options) option is set in the config. This will allow a direct connection to the node, but if you are running a browser app on https, then it will not allow a connection to a non SSL WebSocket endpoint, so you would need to setup SSL for your node. As far as I know LND nodes do not accept connections via WebSocket at this time.
 
 So to simplify connecting to any Lightning node, you can go through a WebSocket proxy (see [Clams](https://github.com/clams-tech/lnsocket-proxy) and [jb55](https://github.com/jb55/ln-ws-proxy)'s WebSocket proxy server repos). Going through a proxy like this requires no trust in the server. The WebSocket connection is initated with the proxy, which then creates a regular TCP socket connection to the node. Then all messages are fully encrypted via the noise protocol, so the server only sees encrypted binary traffic that is simply proxied between the browser and the node. Currently only clearnet is supported, but I believe that the WebSocket proxy code could be modified to create a socket connection to a TOR only node to make this work.
 
-## Current Limitations
+## TOR
 
-- For Commando calls, `lnmessage` will handle matching requests with responses and in most cases this just works. For RPC calls where a large response is expected (`listinvoices`, `listpays` etc) it is recommended to `await` these calls without making other calls simultaneously. A proxy server socket connection may split the response in to multiple parts. This leads to the messages possibly getting scrambled if multiple requests are made at the same time.
-- Most connections will need to be made via a WebSocket proxy server. See the WebSocket proxy section.
-- Clearnet only. I am pretty sure that this will not work out of the box with TOR connections, but I still need to try it in a TOR browser to see if it works.
+Connecting to a node over TOR requires the proxy server to support it.
 
 ## Running Locally
 

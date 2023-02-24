@@ -1,24 +1,19 @@
-import CryptoJS from 'crypto-js'
 import { Buffer } from 'buffer'
 import secp256k1 from 'secp256k1'
 import { createCipher, createDecipher } from './chacha/index.js'
+import { hmac } from '@noble/hashes/hmac'
+import { sha256 as sha256Array } from '@noble/hashes/sha256'
+import { bytesToHex, randomBytes } from '@noble/hashes/utils'
+
+export function sha256(input: Buffer): Buffer {
+  return Buffer.from(sha256Array(input))
+}
 
 export function ecdh(pubkey: Uint8Array, privkey: Uint8Array) {
   return Buffer.from(secp256k1.ecdh(pubkey, privkey))
 }
-
 export function hmacHash(key: Buffer, input: Buffer) {
-  const words = CryptoJS.HmacSHA256(
-    CryptoJS.enc.Hex.parse(input.toString('hex')),
-    CryptoJS.enc.Hex.parse(key.toString('hex'))
-  )
-
-  return Buffer.from(CryptoJS.enc.Hex.stringify(words), 'hex')
-}
-
-export async function sha256(input: Buffer): Promise<Buffer> {
-  const res = await crypto.subtle.digest('SHA-256', input)
-  return Buffer.from(res)
+  return Buffer.from(hmac(sha256Array, key, input))
 }
 
 export function hkdf(ikm: Buffer, len: number, salt = Buffer.alloc(0), info = Buffer.alloc(0)) {
@@ -99,11 +94,10 @@ export function ccpDecrypt(k: Buffer, n: Buffer, ad: Buffer, ciphertext: Buffer)
 export function createRandomPrivateKey(): string {
   let privKey
   do {
-    const bytes = Buffer.allocUnsafe(32)
-    privKey = crypto.getRandomValues(bytes)
-  } while (!validPrivateKey(privKey))
+    privKey = randomBytes(32)
+  } while (!validPrivateKey(Buffer.from(privKey)))
 
-  return privKey.toString('hex')
+  return bytesToHex(privKey)
 }
 
 export function validPublicKey(publicKey: string): boolean {
@@ -114,4 +108,8 @@ export function validPrivateKey(privateKey: string | Buffer): boolean {
   return secp256k1.privateKeyVerify(
     typeof privateKey === 'string' ? Buffer.from(privateKey, 'hex') : privateKey
   )
+}
+
+export function createRandomBytes(length: number) {
+  return randomBytes(length)
 }

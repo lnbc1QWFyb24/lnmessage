@@ -1,3 +1,5 @@
+import type { Buffer } from 'buffer'
+
 export type LnWebSocketOptions = {
   /**
    * 33-byte hex remote compressed public key.
