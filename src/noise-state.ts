@@ -1,6 +1,6 @@
+import { Buffer } from 'buffer'
 import { ccpDecrypt, ccpEncrypt, ecdh, getPublicKey, hkdf, sha256 } from './crypto.js'
 import type { NoiseStateOptions } from './types.js'
-import { Buffer } from 'buffer'
 
 export class NoiseState {
   /**
@@ -107,12 +107,12 @@ export class NoiseState {
    * @param rpk remote public key
    * @return Buffer that is 50 bytes
    */
-  public async initiatorAct1(rpk: Buffer): Promise<Buffer> {
+  public initiatorAct1(rpk: Buffer): Buffer {
     this.rpk = rpk
-    await this._initialize(this.rpk)
+    this._initialize(this.rpk)
 
     // 2. h = SHA-256(h || epk)
-    this.h = await sha256(Buffer.concat([this.h, this.epk]))
+    this.h = sha256(Buffer.concat([this.h, this.epk]))
 
     // 3. es = ECDH(e.priv, rs)
     const ss = ecdh(this.rpk, this.es)
@@ -126,7 +126,7 @@ export class NoiseState {
     const c = ccpEncrypt(this.tempK1, Buffer.alloc(12), this.h, Buffer.alloc(0))
 
     // 6. h = SHA-256(h || c)
-    this.h = await sha256(Buffer.concat([this.h, c]))
+    this.h = sha256(Buffer.concat([this.h, c]))
     // 7. m = 0 || epk || c
     const m = Buffer.concat([Buffer.alloc(1), this.epk, c])
     return m
@@ -138,7 +138,7 @@ export class NoiseState {
    *
    * @param m 50-byte message from responder's act1
    */
-  public async initiatorAct2(m: Buffer) {
+  public initiatorAct2(m: Buffer) {
     // 1. read exactly 50 bytes off the stream
     if (m.length !== 50) throw new Error('ACT2_READ_FAILED')
     // 2. parse th read message m into v, re, and c
@@ -150,7 +150,7 @@ export class NoiseState {
     // 3. assert version is known version
     if (v !== 0) throw new Error('ACT2_BAD_VERSION')
     // 4. sha256(h || re.serializedCompressed');
-    this.h = await sha256(Buffer.concat([this.h, this.repk]))
+    this.h = sha256(Buffer.concat([this.h, this.repk]))
     // 5. ss = ECDH(re, e.priv);
     const ss = ecdh(this.repk, this.es)
     // 6. ck, temp_k2 = HKDF(cd, ss)
@@ -160,7 +160,7 @@ export class NoiseState {
     // 7. p = decryptWithAD()
     ccpDecrypt(this.tempK2, Buffer.alloc(12), this.h, c)
     // 8. h = sha256(h || c)
-    this.h = await sha256(Buffer.concat([this.h, c]))
+    this.h = sha256(Buffer.concat([this.h, c]))
   }
   /**
    * Initiator Act3 is the final phase in the authenticated
@@ -168,7 +168,7 @@ export class NoiseState {
    * was successful. The initiator transports its static public key
    * to the responder.
    */
-  public async initiatorAct3() {
+  public initiatorAct3() {
     // 1. c = encryptWithAD(temp_k2, 1, h, lpk)
     const c = ccpEncrypt(
       this.tempK2,
@@ -177,7 +177,7 @@ export class NoiseState {
       this.lpk
     )
     // 2. h = sha256(h || c)
-    this.h = await sha256(Buffer.concat([this.h, c]))
+    this.h = sha256(Buffer.concat([this.h, c]))
     // 3. ss = ECDH(re, s.priv)
     const ss = ecdh(this.repk, this.ls)
     // 4. ck, temp_k3 = HKDF(ck, ss)
@@ -202,8 +202,8 @@ export class NoiseState {
    * validates that the initiator knows the receivers public key.
    * @param m 50-byte message sent by the initiator
    */
-  public async receiveAct1(m: Buffer) {
-    await this._initialize(this.lpk)
+  public receiveAct1(m: Buffer) {
+    this._initialize(this.lpk)
     // 1. read exactly 50 bytes off the stream
     if (m.length !== 50) throw new Error('ACT1_READ_FAILED')
     // 2. parse th read message m into v,re, and c
@@ -214,7 +214,7 @@ export class NoiseState {
     // 3. assert version is known version
     if (v !== 0) throw new Error('ACT1_BAD_VERSION')
     // 4. sha256(h || re.serializedCompressed');
-    this.h = await sha256(Buffer.concat([this.h, re]))
+    this.h = sha256(Buffer.concat([this.h, re]))
     // 5. ss = ECDH(re, ls.priv);
     const ss = ecdh(re, this.ls)
     // 6. ck, temp_k1 = HKDF(cd, ss)
@@ -224,16 +224,16 @@ export class NoiseState {
     // 7. p = decryptWithAD(temp_k1, 0, h, c)
     ccpDecrypt(this.tempK1, Buffer.alloc(12), this.h, c)
     // 8. h = sha256(h || c)
-    this.h = await sha256(Buffer.concat([this.h, c]))
+    this.h = sha256(Buffer.concat([this.h, c]))
   }
   /**
    * Receiver Act2 takes place only if Act1 was successful.
    * This act sends responder's ephermeral key to the initiator.
    */
-  public async recieveAct2(): Promise<Buffer> {
+  public recieveAct2(): Buffer {
     // 1. e = generateKey() => done in initialization
     // 2. h = sha256(h || e.pub.compressed())
-    this.h = await sha256(Buffer.concat([this.h, this.epk]))
+    this.h = sha256(Buffer.concat([this.h, this.epk]))
     // 3. ss = ecdh(re, e.priv)
     const ss = ecdh(this.repk, this.es)
     // 4. ck, temp_k2 = hkdf(ck, ss)
@@ -243,7 +243,7 @@ export class NoiseState {
     // 5. c = encryptWithAd(temp_k2, 0, h, zero)
     const c = ccpEncrypt(this.tempK2, Buffer.alloc(12), this.h, Buffer.alloc(0))
     // 6. h = sha256(h || c)
-    this.h = await sha256(Buffer.concat([this.h, c]))
+    this.h = sha256(Buffer.concat([this.h, c]))
     // 7. m = 0 || e.pub.compressed() Z|| c
     const m = Buffer.concat([Buffer.alloc(1), this.epk, c])
     return m
@@ -254,7 +254,7 @@ export class NoiseState {
    * The receiver extracts the public key of the initiator.
    * @param m 66-byte message
    */
-  public async receiveAct3(m: Buffer) {
+  public receiveAct3(m: Buffer) {
     // 1. read exactly 66 bytes from the network buffer
     if (m.length !== 66) throw new Error('ACT3_READ_FAILED')
     // 2. parse m into v, c, t
@@ -267,7 +267,7 @@ export class NoiseState {
     const rs = ccpDecrypt(this.tempK2, Buffer.from('000000000100000000000000', 'hex'), this.h, c)
     this.rpk = rs as Buffer
     // 5. h = sha256(h || c)
-    this.h = await sha256(Buffer.concat([this.h, c]))
+    this.h = sha256(Buffer.concat([this.h, c]))
     // 6. ss = ECDH(rs, e.priv)
     const ss = ecdh(this.rpk, this.es)
     // 7. ck, temp_k3 = hkdf(cs, ss)
@@ -290,7 +290,7 @@ export class NoiseState {
    * rotated every 1000 messages.
    * @param m
    */
-  public async encryptMessage(m: Buffer): Promise<Buffer> {
+  public encryptMessage(m: Buffer): Buffer {
     // step 1/2. serialize m length into int16
     const l = Buffer.alloc(2)
     l.writeUInt16BE(m.length, 0)
@@ -309,7 +309,7 @@ export class NoiseState {
    * Decrypts the length of the message using the receiving key and nonce.
    * The receiving key is rotated every 1000 messages.
    */
-  public async decryptLength(lc: Buffer): Promise<number> {
+  public decryptLength(lc: Buffer): number {
     const l = ccpDecrypt(this.rk, this.rn, Buffer.alloc(0), lc) as Buffer
     if (this._incrementRecievingNonce() >= 1000) this._rotateRecievingKeys()
     return l.readUInt16BE(0)
@@ -318,7 +318,7 @@ export class NoiseState {
    * Decrypts the message using the receiving key and nonce. The receiving
    * key is rotated every 1000 messages.
    */
-  public async decryptMessage(c: Buffer) {
+  public decryptMessage(c: Buffer) {
     const m = ccpDecrypt(this.rk, this.rn, Buffer.alloc(0), c)
     if (this._incrementRecievingNonce() >= 1000) this._rotateRecievingKeys()
     return m as Buffer
@@ -327,18 +327,18 @@ export class NoiseState {
   /**
    * Initializes the noise state prior to Act1.
    */
-  private async _initialize(pubkey: Buffer) {
+  private _initialize(pubkey: Buffer) {
     // 1. h = SHA-256(protocolName)
-    this.h = await sha256(Buffer.from(this.protocolName))
+    this.h = sha256(Buffer.from(this.protocolName))
 
     // 2. ck = h
     this.ck = this.h
 
     // 3. h = SHA-256(h || prologue)
-    this.h = await sha256(Buffer.concat([this.h, this.prologue]))
+    this.h = sha256(Buffer.concat([this.h, this.prologue]))
 
     // 4. h = SHA-256(h || pubkey)
-    this.h = await sha256(Buffer.concat([this.h, pubkey]))
+    this.h = sha256(Buffer.concat([this.h, pubkey]))
   }
 
   private _incrementSendingNonce() {

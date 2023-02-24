@@ -1,7 +1,8 @@
 import { BehaviorSubject, firstValueFrom, Observable, Subject } from 'rxjs'
 import { filter, map } from 'rxjs/operators'
 import { Buffer } from 'buffer'
-import { createRandomPrivateKey } from './crypto.js'
+import { bytesToHex } from '@noble/hashes/utils'
+import { createRandomBytes, createRandomPrivateKey } from './crypto.js'
 import { NoiseState } from './noise-state.js'
 import { validateInit } from './validation.js'
 import { deserialize } from './messages/MessageFactory.js'
@@ -10,6 +11,7 @@ import { BufferReader, BufferWriter } from './messages/buf.js'
 import { CommandoMessage } from './messages/CommandoMessage.js'
 import { PongMessage } from './messages/PongMessage.js'
 import { PingMessage } from './messages/PingMessage.js'
+import type { WebSocket as NodeWebSocket } from 'ws'
 
 import {
   LnWebSocketOptions,
@@ -45,7 +47,7 @@ class LnMessage {
    */
   public wsUrl: string
   /**The WebSocket instance*/
-  public socket: WebSocket | null
+  public socket: WebSocket | NodeWebSocket | null
   /**
    * @deprecated Use connectionStatus$ instead
    */
@@ -68,7 +70,7 @@ class LnMessage {
     (JsonRpcSuccessResponse | JsonRpcErrorResponse) & { reqId: string }
   >
   /**Node JS Buffer instance, useful if handling decrypted messages manually*/
-  public Buffer: BufferConstructor
+  public Buffer: Buffer['constructor']
 
   private _ls: Buffer
   private _es: Buffer
@@ -156,14 +158,17 @@ class LnMessage {
     this.connecting = true
     this.connectionStatus$.next('connecting')
     this._attemptReconnect = attemptReconnect
-    this.socket = new WebSocket(this.wsUrl)
+
+    this.socket = new (
+      typeof window === 'undefined' ? (await import('ws')).default : window.WebSocket
+    )(this.wsUrl)
     this.socket.binaryType = 'arraybuffer'
 
     this.socket.onopen = async () => {
       this._log('info', 'WebSocket is connected')
       this._log('info', 'Creating Act1 message')
 
-      const msg = await this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
+      const msg = this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
 
       if (this.socket) {
         this._log('info', 'Sending Act1 message')
@@ -192,7 +197,7 @@ class LnMessage {
       }
     }
 
-    this.socket.onerror = (err) => {
+    this.socket.onerror = (err: { message: string }) => {
       this._log('error', `WebSocket error: ${JSON.stringify(err)}`)
     }
 
@@ -250,16 +255,16 @@ class LnMessage {
 
             // Initiator Act2
             case HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY:
-              readMore = await this._processResponderReply()
+              readMore = this._processResponderReply()
               break
           }
         } else {
           switch (this._readState) {
             case READ_STATE.READY_FOR_LEN:
-              readMore = await this._processPacketLength()
+              readMore = this._processPacketLength()
               break
             case READ_STATE.READY_FOR_BODY:
-              readMore = await this._processPacketBody()
+              readMore = this._processPacketBody()
               break
             case READ_STATE.BLOCKED:
               readMore = false
@@ -279,7 +284,7 @@ class LnMessage {
     this._processingBuffer = false
   }
 
-  private async _processResponderReply() {
+  private _processResponderReply() {
     // read 50 bytes
     const data = this._messageBuffer.readBytes(50)
 
@@ -289,11 +294,11 @@ class LnMessage {
 
     // process reply
     this._log('info', 'Validating message as part of Act2')
-    await this.noise.initiatorAct2(data)
+    this.noise.initiatorAct2(data)
 
     // create final act of the handshake
     this._log('info', 'Creating reply for Act3')
-    const reply = await this.noise.initiatorAct3()
+    const reply = this.noise.initiatorAct3()
 
     if (this.socket) {
       this._log('info', 'Sending reply for act3')
@@ -308,7 +313,7 @@ class LnMessage {
     return true
   }
 
-  private async _processPacketLength() {
+  private _processPacketLength() {
     const LEN_CIPHER_BYTES = 2
     const LEN_MAC_BYTES = 16
 
@@ -320,7 +325,7 @@ class LnMessage {
       if (!lc) return false
 
       // Decrypt the length including the MAC
-      const l = await this.noise.decryptLength(lc)
+      const l = this.noise.decryptLength(lc)
 
       // We need to store the value in a local variable in case
       // we are unable to read the message body in its entirety.
@@ -338,7 +343,7 @@ class LnMessage {
     }
   }
 
-  private async _processPacketBody() {
+  private _processPacketBody() {
     const MESSAGE_MAC_BYTES = 16
 
     if (!this._l) return false
@@ -353,7 +358,7 @@ class LnMessage {
       if (!c) return false
 
       // Decrypt the full message cipher + MAC
-      const m = await this.noise.decryptMessage(c)
+      const m = this.noise.decryptMessage(c)
 
       // Now that we've read the message, we can remove the
       // cached length before we transition states
@@ -392,7 +397,7 @@ class LnMessage {
               this._partialCommandoMsgs[requestId],
               message.subarray(0, message.byteLength - 16)
             ])
-          : decrypted.subarray(0, decrypted.length - 16)
+          : Buffer.from(decrypted.subarray(0, decrypted.length - 16))
 
         return
       }
@@ -415,7 +420,7 @@ class LnMessage {
       switch (payload.type) {
         case MessageType.Init: {
           this._log('info', 'Constructing Init message reply')
-          const reply = await this.noise.encryptMessage((payload as IWireMessage).serialize())
+          const reply = this.noise.encryptMessage((payload as IWireMessage).serialize())
 
           if (this.socket) {
             this._log('info', 'Sending Init message reply')
@@ -437,7 +442,7 @@ class LnMessage {
           this._log('info', 'Creating a Pong message')
 
           const pongMessage = new PongMessage((payload as PingMessage).numPongBytes).serialize()
-          const pong = await this.noise.encryptMessage(pongMessage)
+          const pong = this.noise.encryptMessage(pongMessage)
 
           if (this.socket) {
             this._log('info', 'Sending a Pong message')
@@ -489,9 +494,8 @@ class LnMessage {
 
     if (!reqId) {
       // create random id to match request with response
-      const idBytes = Buffer.allocUnsafe(8)
-      const id = crypto.getRandomValues(idBytes)
-      reqId = id.toString('hex')
+      const id = createRandomBytes(8)
+      reqId = bytesToHex(id)
     }
 
     // write the type
@@ -512,7 +516,7 @@ class LnMessage {
     )
 
     this._log('info', 'Creating message to send')
-    const message = await this.noise.encryptMessage(writer.toBuffer())
+    const message = this.noise.encryptMessage(writer.toBuffer())
 
     if (this.socket) {
       this._log('info', 'Sending commando message')
