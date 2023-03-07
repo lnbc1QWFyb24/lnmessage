@@ -13,7 +13,7 @@ import { PongMessage } from './messages/PongMessage.js'
 import { PingMessage } from './messages/PingMessage.js'
 import type { WebSocket as NodeWebSocket } from 'ws'
 import type { Socket as TCPSocket } from 'net'
-import SocketWrapper from './socket-wrapper.js'
+import type SocketWrapper from './socket-wrapper.js'
 
 import {
   LnWebSocketOptions,
@@ -166,7 +166,7 @@ class LnMessage {
     this._attemptReconnect = attemptReconnect
 
     this.socket = this.tcpSocket
-      ? new SocketWrapper(this.wsUrl, this.tcpSocket)
+      ? new (await import('./socket-wrapper')).default(this.wsUrl, this.tcpSocket)
       : typeof window === 'undefined'
       ? new (await import('ws')).default(this.wsUrl)
       : new window.WebSocket(this.wsUrl)
