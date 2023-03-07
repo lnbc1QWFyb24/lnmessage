@@ -1,16 +1,17 @@
 import { Buffer } from 'buffer'
-import secp256k1 from 'secp256k1'
+import * as secp256k1 from '@noble/secp256k1'
 import { createCipher, createDecipher } from './chacha/index.js'
 import { hmac } from '@noble/hashes/hmac'
 import { sha256 as sha256Array } from '@noble/hashes/sha256'
 import { bytesToHex, randomBytes } from '@noble/hashes/utils'
 
-export function sha256(input: Buffer): Buffer {
+export function sha256(input: Uint8Array): Buffer {
   return Buffer.from(sha256Array(input))
 }
 
 export function ecdh(pubkey: Uint8Array, privkey: Uint8Array) {
-  return Buffer.from(secp256k1.ecdh(pubkey, privkey))
+  const point = secp256k1.Point.fromHex(secp256k1.getSharedSecret(privkey, pubkey))
+  return Buffer.from(sha256(point.toRawBytes(true)))
 }
 export function hmacHash(key: Buffer, input: Buffer) {
   return Buffer.from(hmac(sha256Array, key, input))
@@ -36,7 +37,7 @@ export function hkdf(ikm: Buffer, len: number, salt = Buffer.alloc(0), info = Bu
 }
 
 export function getPublicKey(privKey: Buffer, compressed = true) {
-  return Buffer.from(secp256k1.publicKeyCreate(privKey, compressed))
+  return Buffer.from(secp256k1.getPublicKey(privKey, compressed))
 }
 
 /**
@@ -101,13 +102,16 @@ export function createRandomPrivateKey(): string {
 }
 
 export function validPublicKey(publicKey: string): boolean {
-  return secp256k1.publicKeyVerify(Buffer.from(publicKey, 'hex'))
+  try {
+    secp256k1.Point.fromHex(publicKey)
+    return true
+  } catch (e) {
+    return false
+  }
 }
 
 export function validPrivateKey(privateKey: string | Buffer): boolean {
-  return secp256k1.privateKeyVerify(
-    typeof privateKey === 'string' ? Buffer.from(privateKey, 'hex') : privateKey
-  )
+  return secp256k1.utils.isValidPrivateKey(privateKey)
 }
 
 export function createRandomBytes(length: number) {
