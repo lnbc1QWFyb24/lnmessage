@@ -159,9 +159,7 @@ class LnMessage {
     this.connectionStatus$.next('connecting')
     this._attemptReconnect = attemptReconnect
 
-    // https://stackoverflow.com/questions/17575790/environment-detection-node-js-or-browser#comment120214255_31456668
-    const isNode = typeof process !== 'undefined' && process?.versions?.node
-    this.socket = new (isNode ? (await import('ws')).default : WebSocket)(this.wsUrl)
+    this.socket =  new (typeof globalThis.WebSocket === 'undefined' ? (await import('ws')).default : globalThis.WebSocket)(this.wsUrl)
     this.socket.binaryType = 'arraybuffer'
 
     this.socket.onopen = async () => {
