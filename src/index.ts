@@ -159,9 +159,7 @@ class LnMessage {
     this.connectionStatus$.next('connecting')
     this._attemptReconnect = attemptReconnect
 
-    this.socket = new (
-      typeof window === 'undefined' ? (await import('ws')).default : window.WebSocket
-    )(this.wsUrl)
+    this.socket =  new (typeof globalThis.WebSocket === 'undefined' ? (await import('ws')).default : globalThis.WebSocket)(this.wsUrl)
     this.socket.binaryType = 'arraybuffer'
 
     this.socket.onopen = async () => {
