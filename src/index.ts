@@ -166,10 +166,10 @@ class LnMessage {
     this._attemptReconnect = attemptReconnect
 
     this.socket = this.tcpSocket
-      ? new (await import('./socket-wrapper')).default(this.wsUrl, this.tcpSocket)
-      : typeof window === 'undefined'
+      ? new (await import('./socket-wrapper.js')).default(this.wsUrl, this.tcpSocket)
+      : typeof globalThis.WebSocket === 'undefined'
       ? new (await import('ws')).default(this.wsUrl)
-      : new window.WebSocket(this.wsUrl)
+      : new globalThis.WebSocket(this.wsUrl)
 
     if ((this.socket as WebSocket | NodeWebSocket).binaryType) {
       ;(this.socket as WebSocket | NodeWebSocket).binaryType = 'arraybuffer'
