@@ -1,4 +1,5 @@
 import type { Buffer } from 'buffer'
+import type { Socket as TCPSocket } from 'net'
 
 export type LnWebSocketOptions = {
   /**
@@ -25,6 +26,8 @@ export type LnWebSocketOptions = {
    * When connecting directly to a node, the protocol to use. Defaults to 'wss://'
    */
   wsProtocol?: 'ws:' | 'wss:'
+  /**In nodejs or react native you can connect directly via a TCP socket */
+  tcpSocket?: TCPSocket
   /**
    * 32 byte hex encoded private key to be used as the local node secret.
    * Use this to ensure a consistent local node identity across connection sessions

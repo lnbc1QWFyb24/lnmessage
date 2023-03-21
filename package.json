@@ -1,6 +1,6 @@
 {
   "name": "lnmessage",
-  "version": "0.1.0-0.1.0",
+  "version": "0.1.0-0.3.0",
   "description": "Talk to Lightning nodes from your browser",
   "main": "dist/index.js",
   "type": "module",
@@ -10,6 +10,7 @@
   ],
   "author": "Aaron Barnard",
   "license": "MIT",
+  "repository": "github:aaronbarnardsound/lnmessage",
   "scripts": {
     "build": "tsc"
   },

@@ -4,7 +4,7 @@ Talk to Lightning nodes from the Browser and NodeJS apps.
 
 ## Features
 
-- Connect to a lightning node via a WebSocket connection.
+- Connect to a lightning node via a WebSocket or TCP Socket connection.
 - Works in the Browser and Node without any polyfilling.
 - Initialise with a session secret to have a persistent node public key for the browser.
 - Control a Core Lightning node via [Commando](https://lightning.readthedocs.io/lightning-commando.7.html) RPC calls.
@@ -84,6 +84,8 @@ type LnWebSocketOptions = {
    * When connecting directly to a node and not using a proxy, the protocol to use. Defaults to 'wss://'
    */
   wsProtocol?: 'ws:' | 'wss:'
+  /**In Nodejs or React Native you can connect directly via a TCP socket */
+  tcpSocket?: TCPSocket
   /**
    * 32 byte hex encoded private key to be used as the local node secret.
    * Use this to ensure a consistent local node identity across connection sessions
