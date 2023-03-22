@@ -12,6 +12,8 @@ import { CommandoMessage } from './messages/CommandoMessage.js'
 import { PongMessage } from './messages/PongMessage.js'
 import { PingMessage } from './messages/PingMessage.js'
 import type { WebSocket as NodeWebSocket } from 'ws'
+import type { Socket as TCPSocket } from 'net'
+import type SocketWrapper from './socket-wrapper.js'
 
 import {
   LnWebSocketOptions,
@@ -47,7 +49,9 @@ class LnMessage {
    */
   public wsUrl: string
   /**The WebSocket instance*/
-  public socket: WebSocket | NodeWebSocket | null
+  public socket: WebSocket | NodeWebSocket | null | SocketWrapper
+  /**TCP socket instance*/
+  public tcpSocket?: TCPSocket
   /**
    * @deprecated Use connectionStatus$ instead
    */
@@ -96,7 +100,8 @@ class LnMessage {
       privateKey,
       ip,
       port = 9735,
-      logger
+      logger,
+      tcpSocket
     } = options
 
     this._ls = Buffer.from(privateKey || createRandomPrivateKey(), 'hex')
@@ -115,6 +120,7 @@ class LnMessage {
     this.connected$ = new BehaviorSubject<boolean>(false)
     this.connecting = false
     this.Buffer = Buffer
+    this.tcpSocket = tcpSocket
 
     this._handshakeState = HANDSHAKE_STATE.INITIATOR_INITIATING
     this._decryptedMsgs$ = new Subject()
@@ -159,10 +165,15 @@ class LnMessage {
     this.connectionStatus$.next('connecting')
     this._attemptReconnect = attemptReconnect
 
-    this.socket = new (
-      typeof window === 'undefined' ? (await import('ws')).default : window.WebSocket
-    )(this.wsUrl)
-    this.socket.binaryType = 'arraybuffer'
+    this.socket = this.tcpSocket
+      ? new (await import('./socket-wrapper.js')).default(this.wsUrl, this.tcpSocket)
+      : typeof globalThis.WebSocket === 'undefined'
+      ? new (await import('ws')).default(this.wsUrl)
+      : new globalThis.WebSocket(this.wsUrl)
+
+    if ((this.socket as WebSocket | NodeWebSocket).binaryType) {
+      ;(this.socket as WebSocket | NodeWebSocket).binaryType = 'arraybuffer'
+    }
 
     this.socket.onopen = async () => {
       this._log('info', 'WebSocket is connected')
@@ -211,8 +222,8 @@ class LnMessage {
     )
   }
 
-  private queueMessage(event: MessageEvent) {
-    const { data } = event as { data: ArrayBuffer }
+  private queueMessage(event: { data: ArrayBuffer }) {
+    const { data } = event
     const message = Buffer.from(data)
 
     const currentData =
