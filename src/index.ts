@@ -161,6 +161,7 @@ class LnMessage {
     }
 
     this._log('info', `Initiating connection to node ${this.remoteNodePublicKey}`)
+    this._messageBuffer = null;
     this.connecting = true
     this.connectionStatus$.next('connecting')
     this._attemptReconnect = attemptReconnect
