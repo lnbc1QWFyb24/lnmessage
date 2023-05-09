@@ -179,6 +179,7 @@ export type CommandoRequest = JsonRpcRequest & {
    * request id ahead of time
    */
   reqId?: string
+  reqIdPrefix?: string
 }
 
 export type CommandoResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse
