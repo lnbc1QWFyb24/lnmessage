@@ -27,7 +27,6 @@ import {
   ConnectionStatus
 } from './types.js'
 
-const MAX_BUFFER_SIZE = 1024 * 1024 * 0.8 // 80% of 1 MB limit imposed by cln commando
 const DEFAULT_RECONNECT_ATTEMPTS = 5
 
 class LnMessage {
@@ -90,8 +89,6 @@ class LnMessage {
   private _messageBuffer: BufferReader
   private _processingBuffer: boolean
   private _l: number | null
-  private _bytesRead: number | null
-  private _bytesWrittenMap: Map<any, number>
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
@@ -125,8 +122,6 @@ class LnMessage {
     this.Buffer = Buffer
     this.tcpSocket = tcpSocket
 
-    this._bytesRead = 0
-    this._bytesWrittenMap = new Map()
     this._handshakeState = HANDSHAKE_STATE.INITIATOR_INITIATING
     this._decryptedMsgs$ = new Subject()
     this.decryptedMsgs$ = this._decryptedMsgs$.asObservable()
@@ -185,10 +180,6 @@ class LnMessage {
       this._log('info', 'WebSocket is connected at ' + new Date().toISOString())
       this._log('info', 'Creating Act1 message')
 
-      // Resetting bytes read and written counter
-      this._bytesRead = 0
-      this._bytesWrittenMap.set(this.socket, 0)
-
       const msg = this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
 
       if (this.socket) {
@@ -199,7 +190,23 @@ class LnMessage {
     }
 
     this.socket.onclose = async () => {
-      this.reconnectWebSocket.bind(this)
+      this._log('error', 'WebSocket is closed at ' + new Date().toISOString())
+
+      this.connectionStatus$.next('disconnected')
+      this.connected$.next(false)
+
+      if (this._attemptReconnect && this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS) {
+        this._log('info', 'Waiting to reconnect')
+        this._log('info', `Attempted reconnects: ${this._attemptedReconnects}`)
+
+        this.connectionStatus$.next('waiting_reconnect')
+        this.connecting = true
+
+        await new Promise((resolve) => setTimeout(resolve, (this._attemptedReconnects || 1) * 1000))
+
+        this.connect()
+        this._attemptedReconnects += 1
+      }
     }
 
     this.socket.onerror = (err: { message: string }) => {
@@ -214,26 +221,6 @@ class LnMessage {
         map((status) => status === 'connected')
       )
     )
-  }
-
-  async reconnectWebSocket() {
-    this._log('error', 'WebSocket is closed at ' + new Date().toISOString())
-
-    this.connectionStatus$.next('disconnected')
-    this.connected$.next(false)
-
-    if (this._attemptReconnect && this._attemptedReconnects < DEFAULT_RECONNECT_ATTEMPTS) {
-      this._log('info', 'Waiting to reconnect')
-      this._log('info', `Attempted reconnects: ${this._attemptedReconnects}`)
-
-      this.connectionStatus$.next('waiting_reconnect')
-      this.connecting = true
-
-      await new Promise((resolve) => setTimeout(resolve, (this._attemptedReconnects || 1) * 1000))
-
-      this.connect()
-      this._attemptedReconnects += 1
-    }
   }
 
   private queueMessage(event: { data: ArrayBuffer }) {
@@ -303,7 +290,7 @@ class LnMessage {
       // Terminate on failures as we won't be able to recover
       // since the noise state has rotated nonce and we won't
       // be able to any more data without additional errors.
-      this._log('error', `Noise state has rotated nonce: ${JSON.stringify(err)}`)
+      this._log('error', `Noise state has rotated nonce: ${err}`)
       this.disconnect()
     }
 
@@ -480,24 +467,6 @@ class LnMessage {
 
         case MessageType.CommandoResponse: {
           this._commandoMsgs$.next(payload as CommandoMessage)
-
-          // Counting bytes written and reconnecting if it is about to reach the max limit
-          const currentBytesWritten = this._bytesWrittenMap.get(this.socket) || 0
-          const updatedBytesWritten = currentBytesWritten + Buffer.byteLength(decrypted)
-          this._bytesWrittenMap.set(this.socket, updatedBytesWritten)
-
-          if (
-            this.connectionStatus$.value === 'connected' &&
-            updatedBytesWritten > MAX_BUFFER_SIZE
-          ) {
-            this._log(
-              'error',
-              'Bytes received exceeded the limit. Resetting the connection...' +
-                new Date().toISOString()
-            )
-
-            this.reconnectWebSocket()
-          }
         }
 
         // ignore all other messages
@@ -511,9 +480,10 @@ class LnMessage {
     method,
     params = [],
     rune,
-    reqId,
-    reqIdPrefix = 'lnmessage'
+    reqId
   }: CommandoRequest): Promise<JsonRpcSuccessResponse['result']> {
+    this._log('info', `Commando request method: ${method} params: ${JSON.stringify(params)}`)
+
     // not connected, so initiate a connection
     if (this.connectionStatus$.value === 'disconnected') {
       this._log('info', 'No socket connection, so creating one now')
@@ -533,8 +503,6 @@ class LnMessage {
       await firstValueFrom(this.connectionStatus$.pipe(filter((status) => status === 'connected')))
     }
 
-    this._log('info', `Commando request method: ${method} params: ${JSON.stringify(params)}`)
-
     const writer = new BufferWriter()
 
     if (!reqId) {
@@ -550,7 +518,7 @@ class LnMessage {
     writer.writeBytes(Buffer.from(reqId, 'hex'))
 
     // Unique request id with prefix, method and id
-    const detailedReqId = `${reqIdPrefix}:${method}#${reqId}`
+    const detailedReqId = `lnmessage:${method}#${reqId}`
 
     // write the request
     writer.writeBytes(
@@ -570,24 +538,6 @@ class LnMessage {
     if (this.socket) {
       this._log('info', 'Sending commando message')
       this.socket.send(message)
-
-      // Counting bytes read and reconnecting if it is about to reach the max limit
-      this._bytesRead = this._bytesRead
-        ? this._bytesRead + Buffer.byteLength(message)
-        : Buffer.byteLength(message)
-
-      if (
-        this.connectionStatus$.value === 'connected' &&
-        this._bytesRead &&
-        this._bytesRead > MAX_BUFFER_SIZE
-      ) {
-        this._log(
-          'error',
-          'Bytes sent exceeded the limit. Resetting the connection...' + new Date().toISOString()
-        )
-
-        this.reconnectWebSocket()
-      }
 
       this._log('info', `Message sent with id ${detailedReqId} and awaiting response`)
 
