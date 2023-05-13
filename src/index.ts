@@ -177,7 +177,7 @@ class LnMessage {
     }
 
     this.socket.onopen = async () => {
-      this._log('info', 'WebSocket is connected')
+      this._log('info', 'WebSocket is connected at ' + new Date().toISOString())
       this._log('info', 'Creating Act1 message')
 
       const msg = this.noise.initiatorAct1(Buffer.from(this.remoteNodePublicKey, 'hex'))
@@ -190,7 +190,7 @@ class LnMessage {
     }
 
     this.socket.onclose = async () => {
-      this._log('error', 'WebSocket is closed')
+      this._log('error', 'WebSocket is closed at ' + new Date().toISOString())
 
       this.connectionStatus$.next('disconnected')
       this.connected$.next(false)
@@ -287,9 +287,10 @@ class LnMessage {
         }
       } while (readMore)
     } catch (err) {
-      // Terminate on failures as we won't be able to recovery
+      // Terminate on failures as we won't be able to recover
       // since the noise state has rotated nonce and we won't
       // be able to any more data without additional errors.
+      this._log('error', `Noise state has rotated nonce: ${err}`)
       this.disconnect()
     }
 
@@ -516,10 +517,14 @@ class LnMessage {
     // write the id
     writer.writeBytes(Buffer.from(reqId, 'hex'))
 
+    // Unique request id with prefix, method and id
+    const detailedReqId = `lnmessage:${method}#${reqId}`
+
     // write the request
     writer.writeBytes(
       Buffer.from(
         JSON.stringify({
+          id: detailedReqId, // Adding id for easier debugging with commando
           rune,
           method,
           params
@@ -534,7 +539,7 @@ class LnMessage {
       this._log('info', 'Sending commando message')
       this.socket.send(message)
 
-      this._log('info', 'Message sent and awaiting response')
+      this._log('info', `Message sent with id ${detailedReqId} and awaiting response`)
 
       const { response } = await firstValueFrom(
         this._commandoMsgs$.pipe(filter((commandoMsg) => commandoMsg.id === reqId))
@@ -545,7 +550,9 @@ class LnMessage {
 
       this._log(
         'info',
-        result ? 'Successful response received' : `Error response received: ${error.message}`
+        result
+          ? `Successful response received for ID: ${response.id}`
+          : `Error response received: ${error.message}`
       )
 
       if (error) throw error
@@ -558,7 +565,7 @@ class LnMessage {
 
   _log(level: keyof Logger, msg: string) {
     if (this._logger && this._logger[level]) {
-      this._logger[level](`[${level.toUpperCase()} - ${new Date().toLocaleTimeString()}]: ${msg}`)
+      this._logger[level](`[${level.toUpperCase()} - ${new Date().toISOString()}]: ${msg}`)
     }
   }
 }

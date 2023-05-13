@@ -74,6 +74,14 @@ export class NoiseState {
    * Nonce incremented when receiving messages. Initialized to zero in Act3.
    */
   public rn: Buffer
+  /**  
+  * Chaining key for sending. Initialized to ck in Act 3.	
+  */	
+  public sck: Buffer;
+  /**	
+  * Chaining key for receiving. Initialized to ck in Act 3.	
+  */	
+  public rck: Buffer;
   /**
    * Intermediate key 1. Used to encrypt or decrypt the zero-length AEAD
    * payload in the corresponding initiator or receiver act.
@@ -184,6 +192,7 @@ export class NoiseState {
     const tempK3 = hkdf(ss, 64, this.ck)
     this.ck = tempK3.subarray(0, 32)
     this.tempK3 = Buffer.from(tempK3.subarray(32))
+    this.rck = this.sck = this.ck;
     // 5. t = encryptWithAD(temp_k3, 0, h, zero)
     const t = ccpEncrypt(this.tempK3, Buffer.alloc(12), this.h, Buffer.alloc(0))
     // 6. sk, rk = hkdf(ck, zero)
@@ -354,16 +363,16 @@ export class NoiseState {
   }
 
   private _rotateSendingKeys() {
-    const result = hkdf(this.sk, 64, this.ck)
+    const result = hkdf(this.sk, 64, this.sck)
     this.sk = result.subarray(32)
-    this.ck = result.subarray(0, 32)
+    this.sck = result.subarray(0, 32)
     this.sn = Buffer.alloc(12)
   }
 
   private _rotateRecievingKeys() {
-    const result = hkdf(this.rk, 64, this.ck)
+    const result = hkdf(this.rk, 64, this.rck)
     this.rk = result.subarray(32)
-    this.ck = result.subarray(0, 32)
+    this.rck = result.subarray(0, 32)
     this.rn = Buffer.alloc(12)
   }
 }
