@@ -34,6 +34,8 @@ async function connect() {
     remoteNodePublicKey: '02df5ffe895c778e10f7742a6c5b8a0cefbe9465df58b92fadeb883752c8107c8f',
     // Optional WebSocket proxy endpoint to connect through (see WebSocket Proxy section)
     wsProxy: 'wss://<WEBSOCKET_PROXY>',
+    // Optional TCP Socket to connect through (either use wsProxy OR tcpSocket)
+    tcpSocket: new net.Socket(),
     // The IP address of the node
     ip: '35.232.170.67',
     // The port of the node, defaults to 9735
