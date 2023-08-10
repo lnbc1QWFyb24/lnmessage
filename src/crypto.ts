@@ -10,7 +10,7 @@ export function sha256(input: Uint8Array): Buffer {
 }
 
 export function ecdh(pubkey: Uint8Array, privkey: Uint8Array) {
-  const point = secp256k1.Point.fromHex(secp256k1.getSharedSecret(privkey, pubkey))
+  const point = secp256k1.ProjectivePoint.fromHex(secp256k1.getSharedSecret(privkey, pubkey))
   return Buffer.from(sha256(point.toRawBytes(true)))
 }
 export function hmacHash(key: Buffer, input: Buffer) {
@@ -103,7 +103,7 @@ export function createRandomPrivateKey(): string {
 
 export function validPublicKey(publicKey: string): boolean {
   try {
-    secp256k1.Point.fromHex(publicKey)
+    secp256k1.ProjectivePoint.fromHex(publicKey)
     return true
   } catch (e) {
     return false
