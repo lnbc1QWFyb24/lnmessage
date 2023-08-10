@@ -89,6 +89,7 @@ class LnMessage {
   private _messageBuffer: BufferReader
   private _processingBuffer: boolean
   private _l: number | null
+  private _pingTimeout: NodeJS.Timeout | null
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
@@ -136,6 +137,7 @@ class LnMessage {
     this._readState = READ_STATE.READY_FOR_LEN
     this._processingBuffer = false
     this._l = null
+    this._pingTimeout = null
 
     this.decryptedMsgs$.subscribe((msg) => {
       this.handleDecryptedMessage(msg)
@@ -187,6 +189,8 @@ class LnMessage {
         this.socket.send(msg)
         this._handshakeState = HANDSHAKE_STATE.AWAITING_RESPONDER_REPLY
       }
+
+      this._pingTimeout = setTimeout(this._sendPingMessage.bind(this), 45 * 1000)
     }
 
     this.socket.onclose = async () => {
@@ -221,6 +225,16 @@ class LnMessage {
         map((status) => status === 'connected')
       )
     )
+  }
+
+  private _sendPingMessage() {
+    const pongMessage = new PingMessage().serialize()
+    const ping = this.noise.encryptMessage(pongMessage)
+
+    if (this.socket) {
+      this._log('info', 'Sending a Ping message')
+      this.socket.send(ping)
+    }
   }
 
   private queueMessage(event: { data: ArrayBuffer }) {
@@ -390,6 +404,10 @@ class LnMessage {
   }
 
   async handleDecryptedMessage(decrypted: Buffer) {
+    // reset ping timeout
+    this._pingTimeout && clearTimeout(this._pingTimeout)
+    this._pingTimeout = setTimeout(this._sendPingMessage.bind(this), 40 * 1000)
+
     try {
       const reader = new BufferReader(decrypted)
       const type = reader.readUInt16BE()
