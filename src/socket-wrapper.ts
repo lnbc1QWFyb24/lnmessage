@@ -17,6 +17,7 @@ class SocketWrapper {
 
     socket.on('close', () => {
       this.onclose && this.onclose()
+      socket.removeAllListeners()
     })
 
     socket.on('error', (error) => {
@@ -32,8 +33,7 @@ class SocketWrapper {
     }
 
     this.close = () => {
-      socket.removeAllListeners()
-      socket.destroy()
+      socket.end()
     }
 
     const url = new URL(connection)
