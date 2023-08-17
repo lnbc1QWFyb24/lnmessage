@@ -195,6 +195,7 @@ class LnMessage {
 
     this.socket.onclose = async () => {
       this._log('error', 'WebSocket is closed at ' + new Date().toISOString())
+      this._pingTimeout && clearTimeout(this._pingTimeout)
 
       this.connectionStatus$.next('disconnected')
       this.connected$.next(false)
