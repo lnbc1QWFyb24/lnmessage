@@ -90,6 +90,7 @@ class LnMessage {
   private _processingBuffer: boolean
   private _l: number | null
   private _pingTimeout: NodeJS.Timeout | null
+  private _pongTimeout: NodeJS.Timeout | null
 
   constructor(options: LnWebSocketOptions) {
     validateInit(options)
@@ -138,6 +139,7 @@ class LnMessage {
     this._processingBuffer = false
     this._l = null
     this._pingTimeout = null
+    this._pongTimeout = null
 
     this.decryptedMsgs$.subscribe((msg) => {
       this.handleDecryptedMessage(msg)
@@ -196,6 +198,7 @@ class LnMessage {
     this.socket.onclose = async () => {
       this._log('error', 'WebSocket is closed at ' + new Date().toISOString())
       this._pingTimeout && clearTimeout(this._pingTimeout)
+      this._pongTimeout && clearTimeout(this._pongTimeout)
 
       this.connectionStatus$.next('disconnected')
       this.connected$.next(false)
@@ -235,7 +238,16 @@ class LnMessage {
     if (this.socket) {
       this._log('info', 'Sending a Ping message')
       this.socket.send(ping)
+
+      // wait 5 seconds for a reply and close if no reply
+      this._pongTimeout = setTimeout(() => this._close(), 5 * 1000)
     }
+  }
+
+  private _close() {
+    this._log('error', 'Closing connection')
+
+    this.socket?.close()
   }
 
   private queueMessage(event: { data: ArrayBuffer }) {
@@ -265,7 +277,9 @@ class LnMessage {
     })
 
     this._attemptReconnect = false
-    this.socket && this.socket.close()
+    this._pingTimeout && clearTimeout(this._pingTimeout)
+    this._pongTimeout && clearTimeout(this._pongTimeout)
+    this._close()
   }
 
   private async _processBuffer() {
@@ -405,7 +419,8 @@ class LnMessage {
   }
 
   async handleDecryptedMessage(decrypted: Buffer) {
-    // reset ping timeout
+    // reset ping and pong timeout
+    this._pongTimeout && clearTimeout(this._pongTimeout)
     this._pingTimeout && clearTimeout(this._pingTimeout)
     this._pingTimeout = setTimeout(this._sendPingMessage.bind(this), 40 * 1000)
 
