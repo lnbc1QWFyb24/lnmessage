@@ -58,7 +58,7 @@ class LnMessage {
   public connected$: BehaviorSubject<boolean>
   /**
    * Observable that indicates the current socket connection status
-   * Can be either 'connected', 'connecting', 'waiting_reconnect' or 'disconnected'.
+   * Can be either 'connected', 'connecting', 'waiting_reconnect', 'disconnected' or 'failed'.
    */
   public connectionStatus$: BehaviorSubject<ConnectionStatus>
   /**
@@ -214,6 +214,9 @@ class LnMessage {
 
         this.connect()
         this._attemptedReconnects += 1
+      } else if (this._attemptReconnect && this._attemptedReconnects >= DEFAULT_RECONNECT_ATTEMPTS) {
+        this._log('error', `Failed to reconnect after ${DEFAULT_RECONNECT_ATTEMPTS} attempts`);
+        this.connectionStatus$.next('failed');
       }
     }
 
