@@ -189,4 +189,4 @@ export type Logger = {
   error: (msg: string) => void
 }
 
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'waiting_reconnect'
+export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'waiting_reconnect' | 'failed'
